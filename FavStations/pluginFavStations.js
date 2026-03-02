@@ -706,7 +706,7 @@
   }
 
   // Manager modal: if index provided, edit existing, else create new
-  function openManager(editIndex = null) {
+  function openManager() {
     const overlay = document.createElement('div');
     overlay.style.position = 'fixed';
     overlay.style.left = '0';
@@ -720,7 +720,7 @@
     overlay.style.background = 'rgba(0,0,0,0.6)';
 
     const box = document.createElement('div');
-    box.style.width = '720px';
+    box.style.width = '560px';
     box.style.maxWidth = '96%';
     box.style.maxHeight = '86%';
     box.style.overflow = 'auto';
@@ -730,7 +730,7 @@
     box.style.color = '#000';
 
     const title = document.createElement('h3');
-    title.textContent = 'Fav Stations Manager';
+    title.textContent = 'Manage Lists';
     box.appendChild(title);
 
     const listDiv = document.createElement('div');
@@ -739,73 +739,129 @@
     listDiv.style.gap = '8px';
     listDiv.style.marginBottom = '12px';
 
-    stations.forEach((s, i) => {
-      const row = document.createElement('div');
-      row.style.display = 'flex';
-      row.style.alignItems = 'center';
-      row.style.justifyContent = 'space-between';
-      row.style.gap = '8px';
+    function renderListManager() {
+      listDiv.innerHTML = '';
+      const listNames = Object.keys(listsObj);
 
-      const left = document.createElement('div');
-      left.style.display = 'flex';
-      left.style.gap = '8px';
-      left.style.alignItems = 'center';
+      listNames.forEach((listName, index) => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.justifyContent = 'space-between';
+        row.style.gap = '8px';
+        row.style.padding = '4px';
+        row.style.border = '1px solid #ccc';
+        row.style.borderRadius = '4px';
 
-      if (s.logo) {
-        const img = document.createElement('img');
-        img.src = s.logo;
-        img.style.width = '44px';
-        img.style.height = '28px';
-        img.style.objectFit = 'cover';
-        img.style.borderRadius = '4px';
-        left.appendChild(img);
-      }
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = listName;
+        nameSpan.style.fontWeight = 'bold';
 
-      const txt = document.createElement('div');
-      txt.innerHTML = `<b>${s.freq}</b> — ${escapeHtml(s.name || '')} <div style="font-size:12px;color:#666">${escapeHtml(s.antenna||'')}</div>`;
-      if (s.picode) {
-        const idDiv = document.createElement('div');
-        idDiv.style.fontSize = '11px';
-        idDiv.style.color = '#666';
-        idDiv.textContent = `Pi: ${s.picode}`;
-        txt.appendChild(idDiv);
-      }
-      left.appendChild(txt);
+        const actions = document.createElement('div');
+        actions.style.display = 'flex';
+        actions.style.gap = '6px';
 
-      const actions = document.createElement('div');
-      actions.style.display = 'flex';
-      actions.style.gap = '6px';
+        const renameBtn = document.createElement('button');
+        renameBtn.textContent = 'Rename';
+        renameBtn.onclick = async () => {
+          let newName = prompt(`Rename list "${listName}" to:`, listName);
+          if (newName === null) return;
+          newName = String(newName || '').trim();
+          if (!newName || newName === listName) return;
+          if (listsObj[newName]) {
+            return alert(`A list named "${newName}" already exists.`);
+          }
 
-      const editBtn = document.createElement('button');
-      editBtn.textContent = 'Edit';
-      editBtn.onclick = () => { overlay.remove(); openGenericEditor({ index: i }); };
-      actions.appendChild(editBtn);
+          const oldLists = listsObj;
+          listsObj = {};
+          for (const key in oldLists) {
+            if (key === listName) {
+              listsObj[newName] = oldLists[key];
+            } else {
+              listsObj[key] = oldLists[key];
+            }
+          }
 
-      const delBtn = document.createElement('button');
-      delBtn.textContent = 'Delete';
-      delBtn.onclick = async () => {
-        stations.splice(i, 1);
-        await persistStations();
-        overlay.remove();
-        openManager();
-      };
-      actions.appendChild(delBtn);
+          if (currentListName === listName) {
+            currentListName = newName;
+          }
 
-      row.appendChild(left);
-      row.appendChild(actions);
-      listDiv.appendChild(row);
-    });
+          await persistStations();
+          updateListSelect();
+          renderListManager();
+        };
+        actions.appendChild(renameBtn);
 
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.onclick = async () => {
+          if (Object.keys(listsObj).length <= 1) {
+            return alert("You cannot delete the last list.");
+          }
+          if (!confirm(`Are you sure you want to delete the list "${listName}"? This cannot be undone.`)) return;
+
+          delete listsObj[listName];
+
+          if (currentListName === listName) {
+            currentListName = Object.keys(listsObj)[0];
+            stations = listsObj[currentListName] || [];
+            renderButtons();
+          }
+
+          await persistStations();
+          updateListSelect();
+          renderListManager();
+        };
+        actions.appendChild(deleteBtn);
+
+        const upBtn = document.createElement('button');
+        upBtn.textContent = '↑';
+        upBtn.title = 'Move up';
+        upBtn.disabled = index === 0;
+        upBtn.onclick = async () => {
+          const keys = Object.keys(listsObj);
+          if (index > 0) {
+            [keys[index], keys[index - 1]] = [keys[index - 1], keys[index]];
+            const newLists = {};
+            keys.forEach(k => { newLists[k] = listsObj[k]; });
+            listsObj = newLists;
+            await persistStations();
+            updateListSelect();
+            renderListManager();
+          }
+        };
+        actions.appendChild(upBtn);
+
+        const downBtn = document.createElement('button');
+        downBtn.textContent = '↓';
+        downBtn.title = 'Move down';
+        downBtn.disabled = index === listNames.length - 1;
+        downBtn.onclick = async () => {
+          const keys = Object.keys(listsObj);
+          if (index < keys.length - 1) {
+            [keys[index], keys[index + 1]] = [keys[index + 1], keys[index]];
+            const newLists = {};
+            keys.forEach(k => { newLists[k] = listsObj[k]; });
+            listsObj = newLists;
+            await persistStations();
+            updateListSelect();
+            renderListManager();
+          }
+        };
+        actions.appendChild(downBtn);
+
+        row.appendChild(nameSpan);
+        row.appendChild(actions);
+        listDiv.appendChild(row);
+      });
+    }
+
+    renderListManager();
     box.appendChild(listDiv);
-
-    const addBtn = document.createElement('button');
-    addBtn.textContent = '➕ Add new station';
-    addBtn.onclick = () => { overlay.remove(); openGenericEditor({}); };
-    box.appendChild(addBtn);
 
     const closeBtn = document.createElement('button');
     closeBtn.textContent = 'Close';
-    closeBtn.style.marginLeft = '12px';
+    closeBtn.style.marginTop = '12px';
     closeBtn.onclick = () => overlay.remove();
     box.appendChild(closeBtn);
 
