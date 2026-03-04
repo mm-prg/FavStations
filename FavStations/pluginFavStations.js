@@ -134,13 +134,34 @@
         ph.style.background = '#333';
         ph.style.borderRadius = '4px';
         ph.style.display = 'flex';
+        ph.style.flexDirection = 'column';
         ph.style.alignItems = 'center';
         ph.style.justifyContent = 'center';
         ph.style.color = '#fff';
-        ph.style.fontSize = '12px';
-        ph.style.fontWeight = '600';
         ph.style.padding = '2px';
-        ph.textContent = data && data.freq ? (String(data.freq) + ' MHz') : '';
+        ph.style.textAlign = 'center';
+        ph.style.overflow = 'hidden';
+        ph.style.boxSizing = 'border-box';
+
+        if (data && data.freq) {
+          const freqEl = document.createElement('div');
+          freqEl.style.fontWeight = 'bold';
+          freqEl.style.fontSize = '14px';
+          const freqNum = parseFloat(data.freq);
+          freqEl.textContent = !isNaN(freqNum) ? (freqNum < 30 ? freqNum.toFixed(3) : freqNum.toFixed(1)) : data.freq;
+          ph.appendChild(freqEl);
+        }
+        if (data && data.name) {
+          const nameEl = document.createElement('div');
+          nameEl.style.fontSize = '10px';
+          nameEl.style.lineHeight = '1.1';
+          nameEl.style.width = 'calc(100% - 4px)';
+          nameEl.style.whiteSpace = 'nowrap';
+          nameEl.style.overflow = 'hidden';
+          nameEl.style.textOverflow = 'ellipsis';
+          nameEl.textContent = data.name;
+          ph.appendChild(nameEl);
+        }
         btn.appendChild(ph);
       }
 
@@ -150,7 +171,6 @@
           if (!isNaN(freq) && window.socket && socket.readyState === WebSocket.OPEN) {
             try {
               socket.send('T' + Math.round(Number(freq) * 1000));
-              if (tempSlots[si].antenna) socket.send('Z' + tempSlots[si].antenna);
               showToast(`Tuned ${tempSlots[si].freq}`);
             } catch (err) { console.error('FavStations: tuning error', err); showToast(`Error tuning ${tempSlots[si].freq}`); }
           } else {
@@ -496,13 +516,34 @@
       ph.style.background = '#333';
       ph.style.borderRadius = '4px';
       ph.style.display = 'flex';
+      ph.style.flexDirection = 'column';
       ph.style.alignItems = 'center';
       ph.style.justifyContent = 'center';
       ph.style.color = '#fff';
-      ph.style.fontSize = '12px';
-      ph.style.fontWeight = '600';
       ph.style.padding = '2px';
-      ph.textContent = st.freq ? (String(st.freq) + ' MHz') : '';
+      ph.style.textAlign = 'center';
+      ph.style.overflow = 'hidden';
+      ph.style.boxSizing = 'border-box';
+
+      if (st.freq) {
+        const freqEl = document.createElement('div');
+        freqEl.style.fontWeight = 'bold';
+        freqEl.style.fontSize = '14px';
+        const freqNum = parseFloat(st.freq);
+        freqEl.textContent = !isNaN(freqNum) ? (freqNum < 30 ? freqNum.toFixed(3) : freqNum.toFixed(1)) : st.freq;
+        ph.appendChild(freqEl);
+      }
+      if (st.name) {
+        const nameEl = document.createElement('div');
+        nameEl.style.fontSize = '10px';
+        nameEl.style.lineHeight = '1.1';
+        nameEl.style.width = 'calc(100% - 4px)';
+        nameEl.style.whiteSpace = 'nowrap';
+        nameEl.style.overflow = 'hidden';
+        nameEl.style.textOverflow = 'ellipsis';
+        nameEl.textContent = st.name;
+        ph.appendChild(nameEl);
+      }
       btn.appendChild(ph);
     }
 
@@ -514,7 +555,6 @@
       if (!isNaN(freq) && window.socket && socket.readyState === WebSocket.OPEN) {
         try {
           socket.send("T" + Math.round(Number(freq) * 1000));
-          if (st.antenna) socket.send("Z" + st.antenna);
           showToast(`Tuned ${st.freq}`);
         } catch (err) {
           console.error('FavStations: tuning error', err);
@@ -873,7 +913,7 @@
     const { index = null, isTemp = false } = opts;
     const isNew = index === null;
     const sourceArr = isTemp ? tempSlots : stations;
-    const s = !isNew ? sourceArr[index] : { freq: '', name: '', antenna: '', logo: '' };
+    const s = !isNew ? sourceArr[index] : { freq: '', name: '', antenna: '', logo: '', picode: '' };
 
     const overlay = document.createElement('div');
     overlay.style.position = 'fixed';
@@ -930,19 +970,39 @@
     antennaLabel.appendChild(antennaInput);
     form.appendChild(antennaLabel);
 
+    const piInput = document.createElement('input');
+    piInput.value = s.picode || '';
+    piInput.style.width = '100%';
+
     const logoLabel = document.createElement('label');
     logoLabel.textContent = 'Logo (URL)';
+    const logoInputContainer = document.createElement('div');
+    logoInputContainer.style.display = 'flex';
+    logoInputContainer.style.alignItems = 'center';
+    logoInputContainer.style.gap = '4px';
     const logoInput = document.createElement('input');
     logoInput.value = s.logo || '';
     logoInput.style.width = '100%';
-    logoLabel.appendChild(logoInput);
+    logoInput.style.flex = '1';
+    logoInputContainer.appendChild(logoInput);
+    if (!s.logo && s.picode) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = '🔗';
+      btn.title = 'Genera URL logo di default dal PI Code';
+      btn.style.padding = '4px 6px';
+      btn.onclick = (e) => {
+        e.preventDefault();
+        const pi = piInput.value.trim();
+        if (pi) logoInput.value = `https://tef.noobish.eu/logos/I/${pi}.png`;
+      };
+      logoInputContainer.appendChild(btn);
+    }
+    logoLabel.appendChild(logoInputContainer);
     form.appendChild(logoLabel);
 
     const piLabel = document.createElement('label');
     piLabel.textContent = 'Pi Code';
-    const piInput = document.createElement('input');
-    piInput.value = s.picode || '';
-    piInput.style.width = '100%';
     piLabel.appendChild(piInput);
     form.appendChild(piLabel);
 
@@ -962,6 +1022,7 @@
         antenna: String(antennaInput.value || '').trim(),
         logo: String(logoInput.value || '').trim(),
       };
+      if (item.logo === 'https://tef.noobish.eu/logos/default-logo.png') item.logo = '';
       const inputPi = String(piInput.value || '').trim();
       if (!item.freq) return alert('Frequency required');
 
@@ -1055,8 +1116,11 @@
       name = dataPsElement.textContent.trim();
     }
 
-    const antenna = getCurrentAntennaValue();
-    const logo = logoEl && logoEl.src ? logoEl.src : '';
+//    const antenna = getCurrentAntennaValue();
+    const antenna = 0;
+
+let logo = logoEl && logoEl.src ? logoEl.src : '';
+    if (logo === 'https://tef.noobish.eu/logos/default-logo.png') logo = '';
 
     return { freq, name, antenna, logo };
   }
