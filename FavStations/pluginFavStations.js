@@ -10,6 +10,8 @@
   const pluginId = 'favstations-plugin';
   const storageKey = 'FavStationsList_v1';
   const listsKey = 'FavStationsLists_v1';
+  const currentVersion = '0.0.1'; // Must match FavStations.js
+  const repoBaseUrl = 'https://raw.githubusercontent.com/mm-prg/FavStations/main';
   let currentListName = 'Default';
   let listsObj = {};
   let stations = [];
@@ -18,6 +20,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     createBar();
     fetchList();
+    checkForUpdates();
   });
 
   function createBar() {
@@ -1221,6 +1224,58 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
 
   function escapeHtml(s) {
     return String(s || '').replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]; });
+  }
+
+  // Auto-update mechanism
+  async function checkForUpdates() {
+    try {
+      // Fetch remote FavStations.js to check version
+      const res = await fetch(`${repoBaseUrl}/FavStations.js?t=${Date.now()}`);
+      if (!res.ok) return;
+      const text = await res.text();
+      // Extract version using regex
+      const match = text.match(/version:\s*['"]([^'"]+)['"]/);
+      if (match && match[1]) {
+        const remoteVersion = match[1];
+        if (isNewer(currentVersion, remoteVersion)) {
+          if (confirm(`FavStations: New version ${remoteVersion} available (Current: ${currentVersion}).\n\nUpdate now?`)) {
+            await performUpdate();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('FavStations: Update check error', e);
+    }
+  }
+
+  function isNewer(curr, rem) {
+    const c = curr.split('.').map(Number);
+    const r = rem.split('.').map(Number);
+    for (let i = 0; i < Math.max(c.length, r.length); i++) {
+      if ((r[i] || 0) > (c[i] || 0)) return true;
+      if ((r[i] || 0) < (c[i] || 0)) return false;
+    }
+    return false;
+  }
+
+  async function performUpdate() {
+    showToast('Updating plugin...');
+    try {
+      const res = await fetch('/plugins/FavStations/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseUrl: repoBaseUrl })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        alert('Update successful! The page will reload.');
+        location.reload();
+      } else {
+        alert('Update failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch (e) {
+      alert('Update failed: ' + e.message);
+    }
   }
 
 })();
