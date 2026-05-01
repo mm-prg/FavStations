@@ -1,30 +1,272 @@
 /* FavStations plugin for fmdxwebserver
-   - mostra una barra di pulsanti in basso
-   - memorizza stazioni: {freq,name,antenna,logo}
-   - salva/riprende da /plugins/FavStations/* (server) o fallback a localStorage
+   - shows a button bar at the bottom
+   - stores stations: {freq,name,antenna,logo}
+   - saves/restores from /plugins/FavStations/* (server) or fallback to localStorage
 */
 
 "use strict";
 
 (() => {
+  const pluginVersion = '0.0.4';
   const pluginId = 'favstations-plugin';
   const storageKey = 'FavStationsList_v1';
   const listsKey = 'FavStationsLists_v1';
-  const currentVersion = '0.0.1'; // Must match FavStations.js
   const repoBaseUrl = 'https://raw.githubusercontent.com/mm-prg/FavStations/main';
+  const defaultRemoteStationsUrl = 'https://pastebin.com/raw/s7RMKj4g'; // Fallback URL if not configured
+  const configKey = 'FavStations_config_v1'; // Key for configuration localStorage fallback
   let currentListName = 'Default';
   let listsObj = {};
   let stations = [];
+  let updateAvailable = false;
+  let remoteVersionFound = null;
   let tempSlots = new Array(5).fill(null);
+  let config = {
+    remoteStationsUrl: defaultRemoteStationsUrl,
+    showLogos: true,
+    autoImportDone: false,
+    buttonSize: 'normal',
+    customWidth: null,
+    customHeight: null,
+  };
 
-  document.addEventListener('DOMContentLoaded', () => {
-    createBar();
-    fetchList();
+  document.addEventListener('DOMContentLoaded', async () => {
+    await loadConfigAndInitialize();
     checkForUpdates();
   });
 
+  async function loadConfigAndInitialize() {
+    // Do not show the station bar if we are on the setup page
+    if (window.location.pathname === '/setup') return;
+
+    try {
+      const res = await fetch('/plugins/FavStations/config');
+      if (res.ok) {
+        const serverConfig = await res.json();
+        config = { ...config, ...serverConfig }; // Merges server config with defaults
+        console.log('FavStations: Loaded configuration from server (/plugins/FavStations/config)');
+      } else {
+        throw new Error('Unable to retrieve configuration from server');
+      }
+    } catch (e) {
+      console.warn('FavStations: Unable to load configuration from server, falling back to local storage.', e);
+      // Fallback to localStorage (for compatibility or if server is unavailable)
+      try {
+        const localConfigRaw = localStorage.getItem(configKey);
+        if (localConfigRaw) {
+          config = { ...config, ...JSON.parse(localConfigRaw) };
+          console.log('FavStations: Loaded configuration from local storage fallback');
+        }
+      } catch (e) {
+        console.error('FavStations: Error loading configuration from local storage', e);
+      }
+    }
+
+    // Ensures showLogos is a boolean
+    config.showLogos = !!config.showLogos;
+
+    createBar();
+    await fetchList(); // Loads current stations (local cache or server)
+
+    // If a remote link exists, always force loading on startup
+    if (config.remoteStationsUrl || defaultRemoteStationsUrl) {
+      await importFromRemote(true);
+    }
+  }
+
+  function getButtonDims() {
+    if (config.buttonSize === 'custom' && config.customWidth && config.customHeight) {
+      const w = config.customWidth;
+      const h = config.customHeight;
+      const scaleH = h / 44;
+      const scaleW = w / 72;
+      return {
+        station: { w, h },
+        control: { w: Math.round(36 * scaleW), h: Math.round(28 * scaleH) },
+        font: Math.round(16 * scaleH),
+        stationFont: Math.round(14 * scaleH),
+        nameFont: Math.round(10 * scaleH)
+      };
+    }
+    // Default 'normal' dimensions
+    return { station: { w: 72, h: 44 }, control: { w: 36, h: 28 }, font: 16, stationFont: 14, nameFont: 10 };
+  }
+
+  // Function to persist configuration on server and locally
+  async function persistConfig() {
+    try {
+      const res = await fetch('/plugins/FavStations/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      localStorage.setItem(configKey, JSON.stringify(config));
+      return res.ok;
+    } catch (e) {
+      console.error('FavStations: Error saving config', e);
+      localStorage.setItem(configKey, JSON.stringify(config));
+      return false;
+    }
+  }
+
+  // Imports stations from a remote JSON link
+  async function importFromRemote(silent = false) {
+    let url = config.remoteStationsUrl || defaultRemoteStationsUrl; // Uses value from configuration, falls back to default
+    if (!silent) {
+      const inputUrl = prompt('Enter Remote Stations JSON URL:', url);
+      if (inputUrl === null) return false;
+      url = (inputUrl.trim()) || url;
+    }
+    
+    if (!silent) showToast('Fetching remote stations...');
+    try {
+      const res = await fetch('/plugins/FavStations/fetch-remote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      const data = await res.json();
+      if (data && data.ok && data.data) {
+        const parsed = data.data;
+        console.log(`FavStations: Imported stations from remote URL: ${url}`);
+        // Updates remote URL in configuration if changed
+        if (url !== config.remoteStationsUrl) {
+          config.remoteStationsUrl = url;
+          await persistConfig();
+        }
+        
+        if (Array.isArray(parsed)) {
+          // Legacy format (single list)
+          const sane = parsed.map(item => ({
+            freq: item.freq ? String(item.freq) : '',
+            name: item.name || '',
+            antenna: item.antenna || '',
+            logo: item.logo || '',
+            itu: item.itu || '',
+            picode: item.picode || generateId()
+          }));
+          stations = sane;
+          listsObj[currentListName] = stations;
+        } else if (parsed && typeof parsed === 'object') {
+          // Multi-list format
+          const newLists = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (!Array.isArray(v)) continue;
+            newLists[k] = v.map(item => ({
+              freq: item && item.freq ? String(item.freq) : '',
+              name: item && item.name ? item.name : '',
+              antenna: item && item.antenna ? item.antenna : '',
+              logo: item && item.logo ? item.logo : '',
+              itu: item && item.itu ? item.itu : '',
+              picode: item && item.picode ? item.picode : generateId()
+            }));
+          }
+          listsObj = newLists;
+          if (!listsObj[currentListName]) {
+            const keys = Object.keys(listsObj);
+            currentListName = keys.length ? keys[0] : currentListName;
+          }
+          stations = listsObj[currentListName] || [];
+        } else {
+          throw new Error('Invalid format');
+        }
+
+        await persistStations();
+        renderButtons();
+        updateListSelect();
+        if (!silent) showToast(`Imported stations from remote`);
+        return true;
+      } else {
+        if (!silent) alert('Failed to import: ' + (data && data.error ? data.error : 'Unknown error'));
+        return false;
+      }
+    } catch (e) {
+      console.error('FavStations: remote import error', e);
+      if (!silent) alert('Failed to fetch from remote: ' + e.message);
+      return false;
+    }
+  }
+
+  // Loads lists from JSON file
+  function importStations() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async (ev) => {
+      const file = ev.target.files && ev.target.files[0];
+      if (!file) return;
+      try {
+        const txt = await file.text();
+        const parsed = JSON.parse(txt);
+        console.log(`FavStations: Imported stations from local file: ${file.name}`);
+        if (Array.isArray(parsed)) {
+          // Legacy format (single list)
+          const sane = parsed.map(item => ({
+            freq: item.freq ? String(item.freq) : '',
+            name: item.name || '',
+            antenna: item.antenna || '',
+            logo: item.logo || '',
+            itu: item.itu || '',
+            picode: item.picode || generateId()
+          }));
+          stations = sane;
+          listsObj[currentListName] = stations;
+        } else if (parsed && typeof parsed === 'object') {
+          // Multi-list format
+          const newLists = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (!Array.isArray(v)) continue;
+            newLists[k] = v.map(item => ({
+              freq: item && item.freq ? String(item.freq) : '',
+              name: item && item.name ? item.name : '',
+              antenna: item && item.antenna ? item.antenna : '',
+              logo: item && item.logo ? item.logo : '',
+              itu: item && item.itu ? item.itu : '',
+              picode: item && item.picode ? item.picode : generateId()
+            }));
+          }
+          listsObj = newLists;
+          if (!listsObj[currentListName]) {
+            const keys = Object.keys(listsObj);
+            currentListName = keys.length ? keys[0] : currentListName;
+          }
+          stations = listsObj[currentListName] || [];
+        } else {
+          throw new Error('Invalid format');
+        }
+        await persistStations();
+        renderButtons();
+        updateListSelect();
+        showToast(`Imported ${file.name}`);
+      } catch (e) {
+        console.error('FavStations: import error', e);
+        alert('Failed to import list: ' + (e && e.message ? e.message : String(e)));
+      }
+    };
+    input.click();
+  }
+
+  // Exports all lists to a JSON file
+  async function exportStations() {
+    await persistStations();
+    try {
+      const dataObj = (listsObj && Object.keys(listsObj).length) ? listsObj : { [currentListName]: (stations || []) };
+      const blob = new Blob([JSON.stringify(dataObj, null, 2)], { type: 'application/json' });
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const filename = `FavStations (${dateStr}).json`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${filename}`);
+    } catch (e) { console.error('FavStations: export error', e); showToast('Export failed'); }
+  }
+
   function createBar() {
     if (document.getElementById(pluginId)) return;
+    const dims = getButtonDims();
+
     const bar = document.createElement('div');
     bar.id = pluginId;
     // Position relative to flow at the bottom
@@ -41,34 +283,64 @@
     bar.style.background = 'rgba(0,0,0,0.45)';
     bar.style.overflowX = 'auto';
 
-    const manageBtn = document.createElement('button');
-    manageBtn.textContent = '⭐';
-    manageBtn.title = 'Manage stations';
-    manageBtn.style.width = '36px';
-    manageBtn.style.height = '28px';
-    manageBtn.style.padding = '0';
-    manageBtn.style.fontSize = '16px';
-    manageBtn.style.display = 'inline-flex';
-    manageBtn.style.alignItems = 'center';
-    manageBtn.style.justifyContent = 'center';
-    manageBtn.onclick = openManager;
+    // Main Menu (at the start of the row)
+    const menuBtn = document.createElement('button');
+    menuBtn.textContent = '☰';
+    menuBtn.title = `FavStations (v${pluginVersion})`;
+    menuBtn.id = 'favstations-menu-btn';
+    menuBtn.style.width = dims.control.w + 'px';
+    menuBtn.style.height = dims.control.h + 'px';
+    menuBtn.style.padding = '0';
+    menuBtn.style.fontSize = dims.font + 'px';
+    menuBtn.style.display = 'inline-flex';
+    menuBtn.style.alignItems = 'center';
+    menuBtn.style.justifyContent = 'center';
+
+    menuBtn.onclick = (e) => {
+      const rect = menuBtn.getBoundingClientRect();
+      const menuItems = [
+        { label: 'Manage Lists', action: openManager },
+        { label: 'Import Lists (JSON)', action: importStations },
+        { label: 'Export Lists (JSON)', action: exportStations },
+        { label: 'Import from Remote URL', action: () => importFromRemote(false) },
+        { label: 'Buttons size', action: openDimensionEditor },
+        {
+          label: config.showLogos ? 'Hide station icons' : 'Show station icons',
+          action: async () => {
+            config.showLogos = !config.showLogos;
+            await persistConfig();
+            renderButtons();
+            renderTempSlots();
+            updateListSelect();
+          }
+        }
+      ];
+
+      if (updateAvailable) {
+        menuItems.unshift({
+          label: `🚀 Update Now (v${remoteVersionFound})`,
+          action: async () => {
+            if (confirm(`Update FavStations to version ${remoteVersionFound}?`)) {
+              await performUpdate();
+            }
+          }
+        });
+      }
+
+      showStationContextMenu(rect.left, rect.bottom + 5, {
+        items: menuItems
+      });
+    };
 
     // Controls row (manage, save current, list select)
     const controlsRow = document.createElement('div');
-    controlsRow.style.display = 'flex';
-    controlsRow.style.gap = '8px';
-    controlsRow.style.alignItems = 'center';
-    controlsRow.appendChild(manageBtn);
-
-    // NOTE: the "save current" button is now rendered after the station buttons
-    // to keep controls row compact. It will be created inside `renderButtons()`.
-
+    controlsRow.style.cssText = 'display:flex; gap:8px; align-items:center;';
+    controlsRow.appendChild(menuBtn);
 
     // List selector (shows all existing lists)
     const listSelect = document.createElement('select');
     listSelect.id = 'favstations-list-select';
-    listSelect.style.marginLeft = '8px';
-    listSelect.style.padding = '4px';
+    listSelect.style.cssText = `margin-left: 8px; padding: 0 8px; height: ${dims.control.h}px; background: #222; color: #fff; border: 1px solid #444; border-radius: 6px; font-size: 13px; outline: none; cursor: pointer; vertical-align: middle;`;
     listSelect.onchange = () => {
       const val = listSelect.value;
       if (!val) return;
@@ -100,6 +372,7 @@
     }
 
     function createTempButton(si) {
+      const dims = getButtonDims();
       const data = tempSlots[si];
       const btn = document.createElement('button');
       btn.style.display = 'flex';
@@ -109,19 +382,19 @@
       btn.style.borderRadius = '6px';
       btn.style.background = '#222';
       btn.style.color = '#fff';
-      btn.style.width = '72px';
-      btn.style.height = '44px';
+      btn.style.width = dims.station.w + 'px';
+      btn.style.height = dims.station.h + 'px';
       btn.style.overflow = 'hidden';
-      btn.style.fontSize = '12px';
+      btn.style.fontSize = (dims.stationFont - 2) + 'px';
       // tooltip and content
       if (data) {
         const freqText = data.freq ? `${data.freq} MHz` : '';
-        btn.title = freqText + (data.freq && data.name ? ' — ' : '') + (data.name || '') + (data.picode ? ` (${data.picode})` : '');
+        btn.title = freqText + (data.freq && data.name ? ' — ' : '') + (data.name || '') + (data.itu ? ` [${data.itu}]` : '') + (data.picode ? ` (${data.picode})` : '');
       } else {
         btn.title = `Temp slot ${si+1}: click to save current, click again to tune`;
       }
 
-      if (data && data.logo) {
+      if (config.showLogos && data && data.logo) {
         const img = document.createElement('img');
         img.src = data.logo;
         img.alt = data.name || '';
@@ -149,14 +422,14 @@
         if (data && data.freq) {
           const freqEl = document.createElement('div');
           freqEl.style.fontWeight = 'bold';
-          freqEl.style.fontSize = '14px';
+          freqEl.style.fontSize = dims.stationFont + 'px';
           const freqNum = parseFloat(data.freq);
           freqEl.textContent = !isNaN(freqNum) ? (freqNum < 30 ? freqNum.toFixed(3) : freqNum.toFixed(1)) : data.freq;
           ph.appendChild(freqEl);
         }
         if (data && data.name) {
           const nameEl = document.createElement('div');
-          nameEl.style.fontSize = '10px';
+          nameEl.style.fontSize = dims.nameFont + 'px';
           nameEl.style.lineHeight = '1.1';
           nameEl.style.width = 'calc(100% - 4px)';
           nameEl.style.whiteSpace = 'nowrap';
@@ -183,7 +456,7 @@
           // save current to slot
           const info = getCurrentStationInfo();
           if (!info.freq) return showToast('No frequency to save');
-          const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', picode: getPiCode() || generateId() };
+          const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId() };
           tempSlots[si] = item;
           renderTempSlots();
           showToast(`Saved to slot ${si+1}`);
@@ -204,7 +477,7 @@
               { label: 'Delete station', action: () => { tempSlots[slotIndex] = null; renderTempSlots(); showToast(`Deleted slot ${slotIndex+1}`); } },
               { label: 'Copy current into this', action: () => {
                   const info = getCurrentStationInfo(); if (!info.freq) return showToast('No frequency to copy');
-                  const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', picode: getPiCode() || generateId() };
+                  const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId() };
                   tempSlots[slotIndex] = item; renderTempSlots(); showToast(`Copied current to slot ${slotIndex+1}`);
               } }
             ]
@@ -236,107 +509,6 @@
     // render initial empty temp slots
     renderTempSlots();
 
-    // Save / Load list buttons (icons only)
-    const saveListBtn = document.createElement('button');
-    saveListBtn.textContent = '💾';
-    saveListBtn.title = 'Export all lists to JSON file';
-    saveListBtn.style.width = '36px';
-    saveListBtn.style.height = '28px';
-    saveListBtn.style.padding = '0';
-    saveListBtn.style.fontSize = '16px';
-    saveListBtn.onclick = async () => {
-      // persist locally/server first
-      await persistStations();
-      // prepare JSON and trigger download
-      try {
-        // export all lists object (fallback to current list if listsObj empty)
-        const dataObj = (listsObj && Object.keys(listsObj).length) ? listsObj : { [currentListName]: (stations || []) };
-        const blob = new Blob([JSON.stringify(dataObj, null, 2)], { type: 'application/json' });
-        const now = new Date();
-        const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const filename = `FavStations (${dateStr}).json`;
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        showToast(`Exported ${filename}`);
-      } catch (e) {
-        console.error('FavStations: export error', e);
-        showToast('Export failed');
-      }
-    };
-
-    controlsRow.appendChild(saveListBtn);
-
-    const loadListBtn = document.createElement('button');
-    loadListBtn.textContent = '📂';
-    loadListBtn.title = 'Import lists from JSON file';
-    loadListBtn.style.width = '36px';
-    loadListBtn.style.height = '28px';
-    loadListBtn.style.padding = '0';
-    loadListBtn.style.fontSize = '16px';
-    loadListBtn.onclick = async () => {
-      // open file picker to import JSON list
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.json,application/json';
-      input.onchange = async (ev) => {
-        const file = ev.target.files && ev.target.files[0];
-        if (!file) return;
-        try {
-          const txt = await file.text();
-          const parsed = JSON.parse(txt);
-          if (Array.isArray(parsed)) {
-            // legacy single-list format: import into current list
-            const sane = parsed.map(item => ({
-              freq: item.freq ? String(item.freq) : '',
-              name: item.name || '',
-              antenna: item.antenna || '',
-              logo: item.logo || '',
-              picode: item.picode || generateId()
-            }));
-            stations = sane;
-            listsObj[currentListName] = stations;
-          } else if (parsed && typeof parsed === 'object') {
-            // expected mapping: listName -> array of items
-            const newLists = {};
-            for (const [k, v] of Object.entries(parsed)) {
-              if (!Array.isArray(v)) continue;
-              newLists[k] = v.map(item => ({
-                freq: item && item.freq ? String(item.freq) : '',
-                name: item && item.name ? item.name : '',
-                antenna: item && item.antenna ? item.antenna : '',
-                logo: item && item.logo ? item.logo : '',
-                picode: item && item.picode ? item.picode : generateId()
-              }));
-            }
-            listsObj = newLists;
-            // ensure currentListName exists or pick first
-            if (!listsObj[currentListName]) {
-              const keys = Object.keys(listsObj);
-              currentListName = keys.length ? keys[0] : currentListName;
-            }
-            stations = listsObj[currentListName] || [];
-          } else {
-            throw new Error('Invalid format: expected array or object of lists');
-          }
-          await persistStations();
-          renderButtons();
-          updateListSelect();
-          showToast(`Imported ${file.name}`);
-        } catch (e) {
-          console.error('FavStations: import error', e);
-          alert('Failed to import list: ' + (e && e.message ? e.message : String(e)));
-        }
-      };
-      input.click();
-    };
-    controlsRow.appendChild(loadListBtn);
-
     // append controls row to bar
     bar.appendChild(controlsRow);
 
@@ -363,11 +535,12 @@
     const container = document.getElementById('favstations-buttons');
     if (!container) return;
     container.innerHTML = '';
+    const dims = getButtonDims();
 
     // Compute how many buttons fit per row based on available space
     const buttonsRow = container.parentElement || container;
     const availableWidth = (buttonsRow && buttonsRow.clientWidth) || (window.innerWidth - 32);
-    const BUTTON_WIDTH = 72; // must match createStationButton width
+    const BUTTON_WIDTH = dims.station.w; // must match createStationButton width
     const GAP = 6; // gap used between buttons
     const perButtonTotal = BUTTON_WIDTH + GAP;
     const MAX_PER_ROW = Math.max(1, Math.floor(availableWidth / perButtonTotal));
@@ -402,13 +575,14 @@
 
     // createSaveCurrentButton: returns a button element appended after station buttons
     function createSaveCurrentButton() {
+      const dims = getButtonDims();
       const btn = document.createElement('button');
       btn.textContent = '＋';
       btn.title = 'Save current station to list';
-      btn.style.width = '36px';
-      btn.style.height = '28px';
+      btn.style.width = dims.control.w + 'px';
+      btn.style.height = dims.control.h + 'px';
       btn.style.padding = '0';
-      btn.style.fontSize = '16px';
+      btn.style.fontSize = dims.font + 'px';
       btn.style.marginLeft = '6px';
       btn.onclick = async () => {
         const info = getCurrentStationInfo();
@@ -418,6 +592,7 @@
           name: info.name || '',
           antenna: info.antenna || '',
           logo: info.logo || '',
+          itu: info.itu || '',
           picode: getPiCode() || generateId()
         };
         stations.push(item);
@@ -485,6 +660,7 @@
 
   // Helper to create a station button element
   function createStationButton(st, idx) {
+    const dims = getButtonDims();
     const btn = document.createElement('button');
     btn.style.display = 'flex';
     btn.style.alignItems = 'center';
@@ -495,15 +671,15 @@
     btn.style.color = '#fff';
     // tooltip: frequency and name
     const freqText = st.freq ? `${st.freq} MHz` : '';
-    btn.title = freqText + (st.freq && st.name ? ' — ' : '') + (st.name || '') + (st.picode ? ` (${st.picode})` : '');
+    btn.title = freqText + (st.freq && st.name ? ' — ' : '') + (st.name || '') + (st.itu ? ` [${st.itu}]` : '') + (st.picode ? ` (${st.picode})` : '');
     if (st.picode) btn.dataset.id = st.picode;
 
     // fixed, uniform size for all buttons
-    btn.style.width = '72px';
-    btn.style.height = '44px';
+    btn.style.width = dims.station.w + 'px';
+    btn.style.height = dims.station.h + 'px';
     btn.style.overflow = 'hidden';
 
-    if (st.logo) {
+    if (config.showLogos && st.logo) {
       const img = document.createElement('img');
       img.src = st.logo;
       img.alt = st.name || '';
@@ -531,14 +707,14 @@
       if (st.freq) {
         const freqEl = document.createElement('div');
         freqEl.style.fontWeight = 'bold';
-        freqEl.style.fontSize = '14px';
+        freqEl.style.fontSize = dims.stationFont + 'px';
         const freqNum = parseFloat(st.freq);
         freqEl.textContent = !isNaN(freqNum) ? (freqNum < 30 ? freqNum.toFixed(3) : freqNum.toFixed(1)) : st.freq;
         ph.appendChild(freqEl);
       }
       if (st.name) {
         const nameEl = document.createElement('div');
-        nameEl.style.fontSize = '10px';
+        nameEl.style.fontSize = dims.nameFont + 'px';
         nameEl.style.lineHeight = '1.1';
         nameEl.style.width = 'calc(100% - 4px)';
         nameEl.style.whiteSpace = 'nowrap';
@@ -639,7 +815,7 @@
             { label: 'Delete station', action: async () => { stations.splice(index, 1); await persistStations(); renderButtons(); showToast('Deleted'); } },
             { label: 'Copy current into this', action: async () => {
                 const info = getCurrentStationInfo(); if (!info.freq) return showToast('No frequency to copy');
-                const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', picode: getPiCode() || generateId() };
+                const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId() };
                 stations[index] = item; await persistStations(); renderButtons(); showToast(`Copied current to slot ${index+1}`);
             } }
           ]
@@ -678,6 +854,7 @@
         // Expect an object of lists from the server
         if (serverLists && typeof serverLists === 'object' && !Array.isArray(serverLists) && Object.keys(serverLists).length > 0) {
           listsObj = serverLists;
+          console.log('FavStations: Loaded station lists from server (/plugins/FavStations/list)');
           // Ensure current list exists, or default to first
           if (!listsObj[currentListName]) {
             currentListName = Object.keys(listsObj)[0] || 'Default';
@@ -695,6 +872,7 @@
 
     // fallback: load lists object from localStorage
     listsObj = loadListsLocal();
+    console.log('FavStations: Loaded station lists from local storage fallback');
     // if no lists stored, try legacy single list key
     if (!listsObj || Object.keys(listsObj).length === 0) {
       const old = loadLocal();
@@ -916,7 +1094,7 @@
     const { index = null, isTemp = false } = opts;
     const isNew = index === null;
     const sourceArr = isTemp ? tempSlots : stations;
-    const s = !isNew ? sourceArr[index] : { freq: '', name: '', antenna: '', logo: '', picode: '' };
+    const s = !isNew ? sourceArr[index] : { freq: '', name: '', antenna: '', logo: '', picode: '', itu: '' };
 
     const overlay = document.createElement('div');
     overlay.style.position = 'fixed';
@@ -976,6 +1154,12 @@
     const piInput = document.createElement('input');
     piInput.value = s.picode || '';
     piInput.style.width = '100%';
+    piInput.oninput = () => { piInput.value = piInput.value.toUpperCase(); };
+
+    const ituInput = document.createElement('input');
+    ituInput.value = s.itu || '';
+    ituInput.style.width = '100%';
+    ituInput.oninput = () => { ituInput.value = ituInput.value.toUpperCase(); };
 
     const logoLabel = document.createElement('label');
     logoLabel.textContent = 'Logo (URL)';
@@ -988,26 +1172,46 @@
     logoInput.style.width = '100%';
     logoInput.style.flex = '1';
     logoInputContainer.appendChild(logoInput);
-    if (!s.logo && s.picode) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.textContent = '🔗';
-      btn.title = 'Genera URL logo di default dal PI Code';
-      btn.style.padding = '4px 6px';
-      btn.onclick = (e) => {
-        e.preventDefault();
-        const pi = piInput.value.trim();
-        if (pi) logoInput.value = `https://tef.noobish.eu/logos/I/${pi}.png`;
-      };
-      logoInputContainer.appendChild(btn);
-    }
+
+    const logoSearchBtn = document.createElement('button');
+    logoSearchBtn.type = 'button';
+    logoSearchBtn.textContent = '🔍';
+    logoSearchBtn.title = 'Search for logo using PI Code and ITU (add them if empty!)';
+
+    logoSearchBtn.style.width = '28px'; // Fixed width
+    logoSearchBtn.style.height = '28px'; // Fixed height
+    logoSearchBtn.style.padding = '0'; // Remove padding to control size precisely
+    logoSearchBtn.style.fontSize = '14px'; // Smaller font size for the icon
+    logoSearchBtn.style.flexShrink = '0'; // Prevent button from shrinking
+    logoSearchBtn.style.display = 'flex'; // Use flex to center content
+
+    logoSearchBtn.onclick = async (e) => {
+      e.preventDefault();
+      const derived = await getDerivedLogoUrl({
+        name: nameInput.value,
+        picode: piInput.value,
+        itu: ituInput.value
+      });
+      if (derived) {
+        logoInput.value = derived;
+      } else {
+        showDiscordLinkAlert();
+      }
+    };
+    logoInputContainer.appendChild(logoSearchBtn);
+
     logoLabel.appendChild(logoInputContainer);
     form.appendChild(logoLabel);
 
     const piLabel = document.createElement('label');
-    piLabel.textContent = 'Pi Code';
+    piLabel.textContent = 'PI Code';
     piLabel.appendChild(piInput);
     form.appendChild(piLabel);
+
+    const ituLabel = document.createElement('label');
+    ituLabel.textContent = 'ITU Code';
+    ituLabel.appendChild(ituInput);
+    form.appendChild(ituLabel);
 
     box.appendChild(form);
 
@@ -1024,9 +1228,10 @@
         name: String(nameInput.value || '').trim(),
         antenna: String(antennaInput.value || '').trim(),
         logo: String(logoInput.value || '').trim(),
+        itu: String(ituInput.value || '').trim().toUpperCase(),
       };
       if (item.logo === 'https://tef.noobish.eu/logos/default-logo.png') item.logo = '';
-      const inputPi = String(piInput.value || '').trim();
+      const inputPi = String(piInput.value || '').trim().toUpperCase();
       if (!item.freq) return alert('Frequency required');
 
       if (isTemp) {
@@ -1119,13 +1324,13 @@
       name = dataPsElement.textContent.trim();
     }
 
-//    const antenna = getCurrentAntennaValue();
-    const antenna = 0;
+    const antenna = getCurrentAntennaValue();
 
 let logo = logoEl && logoEl.src ? logoEl.src : '';
     if (logo === 'https://tef.noobish.eu/logos/default-logo.png') logo = '';
 
-    return { freq, name, antenna, logo };
+    const itu = getItuCode() || '';
+    return { freq, name, antenna, logo, itu };
   }
 
   // Try to find Pi Code of the currently tuned station from page elements
@@ -1152,6 +1357,227 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     for (const el of candidates) {
       if (el && el.textContent && el.textContent.trim()) return el.textContent.trim();
     }
+
+    return null;
+  }
+
+  // New constants for pluginFavStations.js
+  const TEF_SERVER_PATH = 'https://tef.noobish.eu/logos/';
+  const CORS_PROXY_URL = 'https://cors-proxy.de:13128/'; // Used by updateStationLogo.js for onlineradiobox
+  const LOGO_CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 Days for resolved logo URLs
+
+  // Session-level cache for remote directory listings (per ITU code)
+  let sessionRemoteDirCache = {};
+
+  // Function to fetch the directory index of a given ITU code (cached for the session only)
+  async function getRemoteDirectoryIndex(ituCode) {
+      if (sessionRemoteDirCache[ituCode]) {
+          return sessionRemoteDirCache[ituCode];
+      }
+
+      try {
+          const response = await fetch(`${TEF_SERVER_PATH}${ituCode}/`);
+          if (!response.ok) {
+              console.warn(`[FavStations] Failed to fetch directory for ${ituCode}`);
+              return [];
+          }
+
+          const html = await response.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          
+          const links = Array.from(doc.querySelectorAll('a'))
+                             .map(a => a.getAttribute('href'))
+                             .filter(href => href && (href.toLowerCase().endsWith('.svg') || href.toLowerCase().endsWith('.png')));
+          
+          const decodedLinks = links.map(link => {
+              let cleanLink = link.split('?')[0]; 
+              cleanLink = cleanLink.split('/').pop(); 
+              return decodeURIComponent(cleanLink).trim(); 
+          });
+
+          sessionRemoteDirCache[ituCode] = decodedLinks;
+          console.log(`[FavStations] Loaded ${decodedLinks.length} files for ITU: ${ituCode} for this browser session.`);
+          return decodedLinks;
+
+      } catch (err) {
+          console.error(`[FavStations] Error fetching directory index for ${ituCode}:`, err);
+          return [];
+      }
+  }
+
+  // Function to get country name from ITU code (assuming window.countryList is available)
+  function getCountryNameByItuCode(ituCode) {
+      if (!Array.isArray(window.countryList)) return ""; // Return empty if list not available
+      
+      const country = window.countryList.find(
+        item => item.itu_code === ituCode.toUpperCase()
+      );
+      return country ? country.country : "";
+  }
+
+  // Function to compare program name with image titles for onlineradiobox
+  function compareAndSelectImage(currentStationName, imgSrcElements) {
+      let selectedImgSrc = null;
+
+      const lowerStationName = currentStationName.toLowerCase();
+      for (const imgSrcElement of imgSrcElements) {
+          const title = imgSrcElement.getAttribute('title');
+          if (!title) continue;
+          const lowerTitle = title.toLowerCase();
+
+          if (lowerTitle === lowerStationName) { // Exact match
+              selectedImgSrc = imgSrcElement.getAttribute('src');
+              break;
+          }
+          if (lowerTitle.includes(lowerStationName) || lowerStationName.includes(lowerTitle)) { // Substring match
+              if (!selectedImgSrc) { // Take the first plausible match
+                  selectedImgSrc = imgSrcElement.getAttribute('src');
+              }
+          }
+      }
+
+      if (selectedImgSrc && !selectedImgSrc.startsWith('https://')) {
+          selectedImgSrc = 'https:' + selectedImgSrc;
+      }
+      return selectedImgSrc;
+  }
+
+  // Function to parse a page, search for logos, and handle results from onlineradiobox
+  async function parseOnlineradioboxPage(url, stationName) {
+      try {
+          const response = await fetch(`${CORS_PROXY_URL}${url}`);
+          if (!response.ok) throw new Error('Network response was not ok.');
+
+          const html = await response.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          const imgSrcElements = doc.querySelectorAll('img[class="station__title__logo"]');
+
+          const selectedImgSrc = compareAndSelectImage(stationName, imgSrcElements);
+
+          if (selectedImgSrc) {
+              console.log('[FavStations] Selected image source from OnlineRadioBox:', selectedImgSrc);
+              return selectedImgSrc;
+          } else {
+              console.log('[FavStations] No logo found on OnlineRadioBox for:', stationName);
+              return null;
+          }
+      } catch (error) {
+          console.error('[FavStations] Error fetching from OnlineRadioBox:', error.message);
+          return null;
+      }
+  }
+
+  // Try to derive a logo URL from station metadata using standard repository patterns
+  async function getDerivedLogoUrl(data) {
+    const picode = (data.picode || '').trim().toUpperCase();
+    const itu = (data.itu || '').trim().toUpperCase();
+    const stationName = (data.name || '').trim();
+
+    if (!picode && !stationName) return '';
+
+    // Check 7-day localStorage cache for this specific station's resolved URL
+    const cacheKey = `favstations_logo_url_v1_${itu}_${picode}_${stationName.replace(/\s/g, '_')}`;
+    const cachedLogoDataStr = localStorage.getItem(cacheKey);
+    const now = Date.now();
+
+    if (cachedLogoDataStr) {
+        try {
+            const cachedData = JSON.parse(cachedLogoDataStr);
+            if (now - cachedData.timestamp < LOGO_CACHE_EXPIRY_MS) {
+                if (cachedData.url && cachedData.url !== "DEFAULT") {
+                    console.log(`[FavStations] Using 7-day cached URL: ${cachedData.url}`);
+                    return cachedData.url;
+                } else if (cachedData.url === "DEFAULT") {
+                    console.log(`[FavStations] Known missing logo for this station (cached state).`);
+                    return ''; // Explicitly cached as not found
+                }
+            } else {
+                localStorage.removeItem(cacheKey); // Cache expired
+            }
+        } catch (e) {
+            console.error('[FavStations] Error parsing cached logo data, clearing cache.', e);
+            localStorage.removeItem(cacheKey);
+        }
+    }
+
+    let foundLogoUrl = '';
+
+    // 1. Try tef.noobish.eu (using PI Code and ITU)
+    if (itu && picode) {
+        const formattedProgram = stationName.toUpperCase().replace(/[\/\-\*\+\:\.\,\§\%\&\"!\?\|\>\<\=\)\(\[\]´`'~#\s]/g, '');
+        const cleanPiCode = picode;
+
+        const priorityFiles = [
+            `${cleanPiCode}_${formattedProgram}.svg`,
+            `${cleanPiCode}_${formattedProgram}.png`,
+            `${cleanPiCode}.svg`,
+            `${cleanPiCode}.png`
+        ];
+
+        try {
+            const dirFiles = await getRemoteDirectoryIndex(itu);
+            for (const fileName of priorityFiles) {
+                const foundFile = dirFiles.find(f => f.toLowerCase() === fileName.toLowerCase());
+                if (foundFile) {
+                    foundLogoUrl = `${TEF_SERVER_PATH}${itu}/${foundFile}`;
+                    console.log(`[FavStations] Found logo on tef.noobish.eu: ${foundLogoUrl}`);
+                    break;
+                }
+            }
+        } catch (e) {
+            console.error('[FavStations] Error searching tef.noobish.eu:', e);
+        }
+    }
+
+    if (foundLogoUrl) {
+        localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, url: foundLogoUrl }));
+        return foundLogoUrl;
+    }
+
+    // 2. Try onlineradiobox.com (using Station Name and ITU)
+    if (stationName && itu) {
+        const country = window.countryList ? window.countryList.find(item => item.itu_code === itu) : null;
+        const selectedCountryCode = country ? country.country_code : null;
+
+        if (selectedCountryCode) {
+            const searchUrl = `https://onlineradiobox.com/search?c=${selectedCountryCode}&cs=${selectedCountryCode}&q=${encodeURIComponent(stationName)}`;
+            const orbLogo = await parseOnlineradioboxPage(searchUrl, stationName);
+            if (orbLogo) {
+                foundLogoUrl = orbLogo;
+                console.log(`[FavStations] Found logo on onlineradiobox.com: ${foundLogoUrl}`);
+            }
+        } else {
+            console.warn(`[FavStations] No country code found for ITU: ${itu} for OnlineRadioBox search.`);
+        }
+    }
+    
+    if (foundLogoUrl) {
+        localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, url: foundLogoUrl }));
+        return foundLogoUrl;
+    }
+
+    // If nothing found, cache as "DEFAULT" (not found) and return empty
+    localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, url: "DEFAULT" }));
+    return '';
+  }
+
+  // Try to find ITU Code of the currently tuned station from page elements
+  function getItuCode() {
+    const ids = ['data-itu','data-itucode','data-itu-code','data-country-itu','data-country'];
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (el && el.textContent && el.textContent.trim()) return el.textContent.trim().toUpperCase();
+    }
+
+    // Check dataset attributes on known elements
+    const logo = document.getElementById('station-logo');
+    if (logo && logo.dataset && (logo.dataset.itu || logo.dataset.itucode)) return (logo.dataset.itu || logo.dataset.itucode).toUpperCase();
+
+    // Fallback: search any element with class data-flag
+    const flag = document.querySelector('.data-flag');
+    if (flag && flag.textContent && flag.textContent.trim()) return flag.textContent.trim().toUpperCase();
 
     return null;
   }
@@ -1234,17 +1660,52 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       if (!res.ok) return;
       const text = await res.text();
       // Extract version using regex
-      const match = text.match(/version:\s*['"]([^'"]+)['"]/);
+      const match = text.match(/(?:pluginVersion|version):\s*['"]([^'"]+)['"]/);
       if (match && match[1]) {
         const remoteVersion = match[1];
-        if (isNewer(currentVersion, remoteVersion)) {
-          if (confirm(`FavStations: New version ${remoteVersion} available (Current: ${currentVersion}).\n\nUpdate now?`)) {
-            await performUpdate();
-          }
+        if (isNewer(pluginVersion, remoteVersion)) {
+          handleUpdateFound(remoteVersion);
         }
       }
     } catch (e) {
       console.warn('FavStations: Update check error', e);
+    }
+  }
+
+  function handleUpdateFound(remoteVer) {
+    updateAvailable = true;
+    remoteVersionFound = remoteVer;
+
+    // Passive UI notifications
+    const menuBtn = document.getElementById('favstations-menu-btn');
+    if (menuBtn) {
+      menuBtn.style.color = '#FE0830';
+      menuBtn.title = `Update available (v${remoteVer})`;
+    }
+
+    // Red dot on sidenav puzzle icon
+    const updateIcon = document.querySelector('.wrapper-outer #navigation .sidenav-content .fa-puzzle-piece') 
+                     || document.querySelector('.wrapper-outer .sidenav-content') 
+                     || document.querySelector('.sidenav-content');
+    
+    if (updateIcon && !updateIcon.querySelector('.favstations-update-dot')) {
+      const redDot = document.createElement('span');
+      redDot.className = 'favstations-update-dot';
+      redDot.style.cssText = 'display:block; width:12px; height:12px; border-radius:50%; background-color:#FE0830; margin-left:82px; margin-top:-12px;';
+      updateIcon.appendChild(redDot);
+    }
+
+    // Notification text in setup page
+    if (window.location.pathname === '/setup') {
+      const pluginSettings = document.getElementById('plugin-settings');
+      if (pluginSettings) {
+        const updateMsg = `<a href="https://github.com/mm-prg/FavStations" target="_blank" style="color:#FE0830;">[FavStations] Update available: ${pluginVersion} --> ${remoteVer}</a><br>`;
+        if (pluginSettings.textContent.trim() === 'No plugin settings are available.') {
+          pluginSettings.innerHTML = updateMsg;
+        } else {
+          pluginSettings.innerHTML += ' ' + updateMsg;
+        }
+      }
     }
   }
 
@@ -1276,6 +1737,162 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     } catch (e) {
       alert('Update failed: ' + e.message);
     }
+  }
+
+  // Visual dimension editor
+  function openDimensionEditor() {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed; left:0; top:0; right:0; bottom:0; z-index:20000; background:rgba(0,0,0,0.85); display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; font-family:sans-serif; backdrop-filter:blur(4px);';
+
+    const title = document.createElement('h3');
+    title.textContent = 'Drag the corner of the box to resize the buttons';
+    title.style.marginBottom = '20px';
+    overlay.appendChild(title);
+
+    const dims = getButtonDims();
+    
+    // Resizable container
+    const resizeContainer = document.createElement('div');
+    resizeContainer.style.cssText = `
+      border: 2px dashed #aaa;
+      background: rgba(255,255,255,0.1);
+      overflow: hidden;
+      resize: both;
+      width: ${dims.station.w}px;
+      height: ${dims.station.h}px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 40px;
+      min-height: 24px;
+      box-sizing: content-box;
+    `;
+
+    const sampleBtn = document.createElement('div');
+    sampleBtn.textContent = 'STATION';
+    sampleBtn.style.cssText = 'width:100%; height:100%; background:#222; border:1px solid #444; border-radius:6px; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:12px; pointer-events:none;';
+    resizeContainer.appendChild(sampleBtn);
+    overlay.appendChild(resizeContainer);
+
+    const info = document.createElement('div');
+    info.style.marginTop = '15px';
+    info.style.fontSize = '18px';
+    info.textContent = `${dims.station.w} x ${dims.station.h}`;
+    overlay.appendChild(info);
+
+    // Update info on resize using ResizeObserver for real-time feedback
+    const ro = new ResizeObserver(entries => {
+      for (let entry of entries) {
+        const w = Math.round(entry.contentRect.width);
+        const h = Math.round(entry.contentRect.height);
+        info.textContent = `${w} x ${h}`;
+      }
+    });
+    ro.observe(resizeContainer);
+
+    const actions = document.createElement('div');
+    actions.style.marginTop = '30px';
+    actions.style.display = 'flex';
+    actions.style.gap = '12px';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save';
+    saveBtn.style.padding = '8px 20px';
+    saveBtn.onclick = async () => {
+      const rect = resizeContainer.getBoundingClientRect();
+      config.customWidth = Math.round(rect.width); 
+      config.customHeight = Math.round(rect.height);
+      config.buttonSize = 'custom';
+      
+      await persistConfig();
+      const oldBar = document.getElementById(pluginId);
+      if (oldBar) oldBar.remove();
+      createBar();
+      renderButtons();
+      overlay.remove();
+      ro.disconnect();
+    };
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.padding = '8px 20px';
+    cancelBtn.onclick = () => {
+      overlay.remove();
+      ro.disconnect();
+    };
+
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    overlay.appendChild(actions);
+
+    document.body.appendChild(overlay);
+  }
+
+  // Custom alert to show Discord link
+  function showDiscordLinkAlert() {
+    const discordLink = "https://discord.com/channels/1053804249651359765/1233159920711368765/threads/1233160258877390959";
+    const message = "Station logo not found! Please look for it and send it to the discord page:";
+    const linkText = "Discord - Group FMDX - Station Logos";
+
+    const alertOverlay = document.createElement('div');
+    alertOverlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 99999;
+    `;
+
+    const alertBox = document.createElement('div');
+    alertBox.style.cssText = `
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      text-align: center;
+      color: #000;
+      font-family: sans-serif;
+      max-width: 80%;
+    `;
+
+    const msgParagraph = document.createElement('p');
+    msgParagraph.textContent = message;
+    alertBox.appendChild(msgParagraph);
+
+    const linkElement = document.createElement('a');
+    linkElement.href = discordLink;
+    linkElement.textContent = linkText;
+    linkElement.target = "_blank"; // Open in new tab
+    linkElement.style.cssText = `
+      color: #007bff;
+      text-decoration: underline;
+      cursor: pointer;
+    `;
+    alertBox.appendChild(linkElement);
+
+    const closeButton = document.createElement('button');
+    closeButton.textContent = 'Close';
+    closeButton.style.cssText = `
+      margin-top: 15px;
+      padding: 8px 15px;
+      background: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    `;
+    closeButton.onclick = () => {
+      document.body.removeChild(alertOverlay);
+    };
+    alertBox.appendChild(closeButton);
+
+    alertOverlay.appendChild(alertBox);
+    document.body.appendChild(alertOverlay);
   }
 
 })();
