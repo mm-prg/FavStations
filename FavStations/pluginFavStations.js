@@ -5,7 +5,7 @@
 */
 
 "use strict";
-
+ 
 (() => {
   const pluginVersion = '0.0.4';
   const pluginId = 'favstations-plugin';

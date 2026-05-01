@@ -4,7 +4,7 @@ var pluginConfig = {
     version: '0.0.7',
     author: 'mm-prg',
     frontEndPath: 'FavStations/pluginFavStations.js'
-}
+} 
 
 // Backend (server) changes can go here...
 

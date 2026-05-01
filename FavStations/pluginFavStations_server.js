@@ -15,7 +15,7 @@ const dataPath = path.join(dataDir, 'favstations.json');
 // Plugin configuration (options like remote URL, icon display)
 const configDir = path.join(__dirname, '../../plugins_configs');
 const configPath = path.join(configDir, 'FavStations.json');
-
+ 
 function loadConfig() {
   try {
     if (!fs.existsSync(configPath)) {
