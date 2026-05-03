@@ -7,8 +7,53 @@
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.7a';
+  const pluginVersion = '0.0.8';
   const pluginId = 'favstations-plugin';
+
+  // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
+  const showTip = (btn, text) => {
+    hideTip();
+    const tip = document.createElement('div');
+    tip.id = 'favstations-custom-tip';
+    tip.textContent = text;
+    // Style mimicking fmdxwebserver top-bar plugin buttons (like sysinfo)
+    tip.style.cssText = `
+      position: fixed;
+      background: rgba(15, 15, 15, 0.96);
+      color: #ffffff;
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      border: 1px solid #444;
+      z-index: 20000;
+      pointer-events: none;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.7);
+      white-space: pre-wrap;
+      opacity: 0;
+      transition: opacity 0.15s ease-in-out;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    `;
+    document.body.appendChild(tip);
+
+    const rect = btn.getBoundingClientRect();
+    let left = rect.left + rect.width / 2 - tip.offsetWidth / 2;
+    let top = rect.top - tip.offsetHeight - 8;
+
+    // Basic viewport safety
+    if (left < 10) left = 10;
+    if (left + tip.offsetWidth > window.innerWidth - 10) left = window.innerWidth - tip.offsetWidth - 10;
+    if (top < 10) top = rect.bottom + 8;
+
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    requestAnimationFrame(() => tip.style.opacity = '1');
+  };
+
+  const hideTip = () => {
+    const tip = document.getElementById('favstations-custom-tip');
+    if (tip) tip.remove();
+  };
+
   const storageKey = 'FavStationsList_v1';
   const listsKey = 'FavStationsLists_v1';
   const repoBaseUrl = 'https://raw.githubusercontent.com/mm-prg/FavStations/main';
@@ -290,31 +335,23 @@
     menuBtn.style.width = dims.control.w + 'px';
     menuBtn.style.height = dims.control.h + 'px';
     menuBtn.style.padding = '0';
+    menuBtn.style.background = '#111';
+    menuBtn.style.border = '1px solid #333';
+    menuBtn.style.borderRadius = '4px';
+    menuBtn.style.color = '#fff';
     menuBtn.style.fontSize = dims.font + 'px';
     menuBtn.style.display = 'inline-flex';
     menuBtn.style.alignItems = 'center';
     menuBtn.style.justifyContent = 'center';
 
-    // Custom styled tooltip to match fmdxwebserver style
-    const showTip = () => {
-      const tip = document.createElement('div');
-      tip.id = 'favstations-menu-tip';
-      tip.textContent = `FavStations (v${pluginVersion})`;
-      tip.style.cssText = 'position:fixed; background:#222; color:#fff; padding:4px 9px; border-radius:6px; font-size:12px; border:1px solid #444; z-index:20000; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.6); white-space:nowrap;';
-      document.body.appendChild(tip);
-      const rect = menuBtn.getBoundingClientRect();
-      tip.style.left = (rect.left + rect.width / 2 - tip.offsetWidth / 2) + 'px';
-      tip.style.top = (rect.top - tip.offsetHeight - 8) + 'px';
-    };
-
-    const hideTip = () => {
-      const tip = document.getElementById('favstations-menu-tip');
-      if (tip) tip.remove();
-    };
-
-    menuBtn.addEventListener('mouseenter', showTip);
+    menuBtn.addEventListener('mouseenter', () => {
+      let tooltipText = `FavStations (v${pluginVersion})`;
+      if (updateAvailable) {
+        tooltipText += `\n🚀 Update available (v${remoteVersionFound})`;
+      }
+      showTip(menuBtn, tooltipText);
+    });
     menuBtn.addEventListener('mouseleave', hideTip);
-    // Ensure tooltip is hidden when menu is opened
     menuBtn.addEventListener('mousedown', hideTip);
 
     menuBtn.onclick = (e) => {
@@ -402,19 +439,20 @@
       btn.style.justifyContent = 'center';
       btn.style.padding = '4px';
       btn.style.borderRadius = '6px';
-      btn.style.background = '#222';
+      btn.style.background = '#111';
+      btn.style.border = '1px solid #333';
       btn.style.color = '#fff';
       btn.style.width = dims.station.w + 'px';
       btn.style.height = dims.station.h + 'px';
       btn.style.overflow = 'hidden';
       btn.style.fontSize = (dims.stationFont - 2) + 'px';
-      // tooltip and content
-      if (data) {
-        const freqText = data.freq ? `${data.freq} MHz` : '';
-        btn.title = freqText + (data.freq && data.name ? ' — ' : '') + (data.name || '') + (data.itu ? ` [${data.itu}]` : '') + (data.picode ? ` (${data.picode})` : '');
-      } else {
-        btn.title = `Temp slot ${si+1}: click to save current, click again to tune`;
-      }
+
+      const tooltipText = data 
+        ? (data.freq ? `${data.freq} MHz` : '') + (data.freq && data.name ? ' — ' : '') + (data.name || '') + (data.itu ? ` [${data.itu}]` : '') + (data.picode ? ` (${data.picode})` : '')
+        : `Temp slot ${si+1}: click to save current, click again to tune`;
+      btn.addEventListener('mouseenter', () => showTip(btn, tooltipText));
+      btn.addEventListener('mouseleave', hideTip);
+      btn.addEventListener('mousedown', hideTip);
 
       if (config.showLogos && data && data.logo) {
         const img = document.createElement('img');
@@ -600,7 +638,13 @@
       const dims = getButtonDims();
       const btn = document.createElement('button');
       btn.textContent = '＋';
-      btn.title = 'Save current station to list';
+      btn.addEventListener('mouseenter', () => showTip(btn, 'Save current station to list'));
+      btn.addEventListener('mouseleave', hideTip);
+      btn.addEventListener('mousedown', hideTip);
+      btn.style.background = '#111';
+      btn.style.border = '1px solid #333';
+      btn.style.borderRadius = '4px';
+      btn.style.color = '#fff';
       btn.style.width = dims.control.w + 'px';
       btn.style.height = dims.control.h + 'px';
       btn.style.padding = '0';
@@ -689,11 +733,16 @@
     btn.style.justifyContent = 'center';
     btn.style.padding = '4px';
     btn.style.borderRadius = '6px';
-    btn.style.background = '#222';
+    btn.style.background = '#111';
+    btn.style.border = '1px solid #333';
     btn.style.color = '#fff';
     // tooltip: frequency and name
     const freqText = st.freq ? `${st.freq} MHz` : '';
-    btn.title = freqText + (st.freq && st.name ? ' — ' : '') + (st.name || '') + (st.itu ? ` [${st.itu}]` : '') + (st.picode ? ` (${st.picode})` : '');
+    const tooltipText = freqText + (st.freq && st.name ? ' — ' : '') + (st.name || '') + (st.itu ? ` [${st.itu}]` : '') + (st.picode ? ` (${st.picode})` : '');
+    btn.addEventListener('mouseenter', () => showTip(btn, tooltipText));
+    btn.addEventListener('mouseleave', hideTip);
+    btn.addEventListener('mousedown', hideTip);
+
     if (st.picode) btn.dataset.id = st.picode;
 
     // fixed, uniform size for all buttons
@@ -1702,7 +1751,6 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     const menuBtn = document.getElementById('favstations-menu-btn');
     if (menuBtn) {
       menuBtn.style.color = '#FE0830';
-      menuBtn.title = `Update available (v${remoteVer})`;
     }
 
     // Red dot on sidenav puzzle icon
