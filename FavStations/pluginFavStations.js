@@ -1,8 +1,8 @@
-/* FavStations plugin for fmdxwebserver
-   - shows a button bar at the bottom
-   - stores stations: {freq,name,antenna,logo}
-   - saves/restores from /plugins/FavStations/* (server) or fallback to localStorage
-*/
+/**
+ * ************************************************
+ * FavStations Plugin for FM-DX Webserver (v 0.0.8)
+ * ************************************************
+ */
 
 "use strict";
  
@@ -76,7 +76,9 @@
 
   document.addEventListener('DOMContentLoaded', async () => {
     await loadConfigAndInitialize();
-    checkForUpdates();
+    if (window.is_admin) {
+      checkForUpdates();
+    }
   });
 
   async function loadConfigAndInitialize() {
@@ -346,7 +348,7 @@
 
     menuBtn.addEventListener('mouseenter', () => {
       let tooltipText = `FavStations (v${pluginVersion})`;
-      if (updateAvailable) {
+      if (updateAvailable && window.is_admin) {
         tooltipText += `\n🚀 Update available (v${remoteVersionFound})`;
       }
       showTip(menuBtn, tooltipText);
@@ -375,7 +377,7 @@
         }
       ];
 
-      if (updateAvailable) {
+      if (updateAvailable && window.is_admin) {
         menuItems.unshift({
           label: `🚀 Update Now (v${remoteVersionFound})`,
           action: async () => {
@@ -1744,6 +1746,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
   }
 
   function handleUpdateFound(remoteVer) {
+    if (!window.is_admin) return;
     updateAvailable = true;
     remoteVersionFound = remoteVer;
 
