@@ -7,7 +7,7 @@
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.9';
+  const pluginVersion = '0.0.9a';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -64,6 +64,15 @@
   let stations = [];
   let updateAvailable = false;
   let remoteVersionFound = null;
+  let isAdmin = false;
+
+  function checkAdminMode() {
+    const bodyText = document.body.textContent || document.body.innerText;
+    isAdmin = bodyText.includes("You are logged in as an administrator.") ||
+              bodyText.includes("You are logged in as an adminstrator.");
+    console.log(`[FavStations] Admin Mode: ${isAdmin}`);
+  }
+
   let tempSlots = new Array(5).fill(null);
   let config = {
     remoteStationsUrl: defaultRemoteStationsUrl,
@@ -75,8 +84,9 @@
   };
 
   document.addEventListener('DOMContentLoaded', async () => {
+    checkAdminMode();
     await loadConfigAndInitialize();
-    if (window.is_admin) {
+    if (isAdmin) {
       checkForUpdates();
     }
   });
@@ -348,7 +358,7 @@
 
     menuBtn.addEventListener('mouseenter', () => {
       let tooltipText = `FavStations (v${pluginVersion})`;
-      if (updateAvailable && window.is_admin) {
+      if (updateAvailable && isAdmin) {
         tooltipText += `\n🚀 Update available (v${remoteVersionFound})`;
       }
       showTip(menuBtn, tooltipText);
@@ -377,7 +387,7 @@
         }
       ];
 
-      if (updateAvailable && window.is_admin) {
+      if (updateAvailable && isAdmin) {
         menuItems.unshift({
           label: `🚀 Update Now (v${remoteVersionFound})`,
           action: async () => {
@@ -1746,7 +1756,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
   }
 
   function handleUpdateFound(remoteVer) {
-    if (!window.is_admin) return;
+    if (!isAdmin) return;
     updateAvailable = true;
     remoteVersionFound = remoteVer;
 
