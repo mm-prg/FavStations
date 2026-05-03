@@ -7,7 +7,7 @@
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.4';
+  const pluginVersion = '0.0.7a';
   const pluginId = 'favstations-plugin';
   const storageKey = 'FavStationsList_v1';
   const listsKey = 'FavStationsLists_v1';
@@ -286,7 +286,6 @@
     // Main Menu (at the start of the row)
     const menuBtn = document.createElement('button');
     menuBtn.textContent = '☰';
-    menuBtn.title = `FavStations (v${pluginVersion})`;
     menuBtn.id = 'favstations-menu-btn';
     menuBtn.style.width = dims.control.w + 'px';
     menuBtn.style.height = dims.control.h + 'px';
@@ -296,7 +295,30 @@
     menuBtn.style.alignItems = 'center';
     menuBtn.style.justifyContent = 'center';
 
+    // Custom styled tooltip to match fmdxwebserver style
+    const showTip = () => {
+      const tip = document.createElement('div');
+      tip.id = 'favstations-menu-tip';
+      tip.textContent = `FavStations (v${pluginVersion})`;
+      tip.style.cssText = 'position:fixed; background:#222; color:#fff; padding:4px 9px; border-radius:6px; font-size:12px; border:1px solid #444; z-index:20000; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.6); white-space:nowrap;';
+      document.body.appendChild(tip);
+      const rect = menuBtn.getBoundingClientRect();
+      tip.style.left = (rect.left + rect.width / 2 - tip.offsetWidth / 2) + 'px';
+      tip.style.top = (rect.top - tip.offsetHeight - 8) + 'px';
+    };
+
+    const hideTip = () => {
+      const tip = document.getElementById('favstations-menu-tip');
+      if (tip) tip.remove();
+    };
+
+    menuBtn.addEventListener('mouseenter', showTip);
+    menuBtn.addEventListener('mouseleave', hideTip);
+    // Ensure tooltip is hidden when menu is opened
+    menuBtn.addEventListener('mousedown', hideTip);
+
     menuBtn.onclick = (e) => {
+      hideTip();
       const rect = menuBtn.getBoundingClientRect();
       const menuItems = [
         { label: 'Manage Lists', action: openManager },
