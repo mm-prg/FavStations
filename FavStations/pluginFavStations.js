@@ -1,13 +1,13 @@
 /**
  * ************************************************
- * FavStations Plugin for FM-DX Webserver (v 0.0.8)
+ * FavStations Plugin for FM-DX Webserver
  * ************************************************
  */
 
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.8';
+  const pluginVersion = '0.0.9';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
