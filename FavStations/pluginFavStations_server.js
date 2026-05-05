@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * FavStations Plugin for FM-DX Webserver (v0.0.9a)
+ * FavStations Plugin for FM-DX Webserver (v0.0.10)
  * ************************************************
  */
 
@@ -14,13 +14,17 @@ const express = require('express');
 const endpointsRouter = require('../../server/endpoints');
 const { logInfo, logError } = require('../../server/console');
 
+logInfo("[FavStations] Backend script is being loaded...");
+
 const pluginName = "FavStations";
 const dataDir = path.join(__dirname, 'files');
 const dataPath = path.join(dataDir, 'favstations.json');
 
 // Plugin configuration (options like remote URL, icon display)
-const configDir = path.join(__dirname, '../../plugins_configs');
+const configDir = path.resolve(__dirname, '../../plugins_configs');
 const configPath = path.join(configDir, 'FavStations.json');
+
+logInfo(`[FavStations] Config path set to: ${configPath}`);
  
 function loadConfig() {
   try {

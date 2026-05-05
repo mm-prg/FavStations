@@ -7,7 +7,7 @@
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.9a';
+  const pluginVersion = '0.0.10';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -68,9 +68,21 @@
 
   function checkAdminMode() {
     const bodyText = document.body.textContent || document.body.innerText;
-    isAdmin = bodyText.includes("You are logged in as an administrator.") ||
-              bodyText.includes("You are logged in as an adminstrator.");
-    console.log(`[FavStations] Admin Mode: ${isAdmin}`);
+    const str1 = "You are logged in as an administrator.";
+    const str2 = "You are logged in as an adminstrator."; // FM-DX typo compatibility
+    
+    const found1 = bodyText.includes(str1);
+    const found2 = bodyText.includes(str2);
+    isAdmin = found1 || found2;
+
+    console.log(`[FavStations] --- Admin Check ---`);
+    console.log(`[FavStations] Searching for: "${str1}" -> Found: ${found1}`);
+    console.log(`[FavStations] Searching for: "${str2}" -> Found: ${found2}`);
+    console.log(`[FavStations] Resulting isAdmin: ${isAdmin}`);
+    if (!isAdmin) {
+      console.log(`[FavStations] Page Text Snippet: "${bodyText.substring(0, 250).replace(/\n/g, ' ')}..."`);
+    }
+    console.log(`[FavStations] ------------------`);
   }
 
   let tempSlots = new Array(5).fill(null);
@@ -1737,21 +1749,30 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
 
   // Auto-update mechanism
   async function checkForUpdates() {
+    console.log('[FavStations] Starting update check...');
     try {
       // Fetch remote FavStations.js to check version
+      const remotePluginJsUrl = `${repoBaseUrl}/FavStations.js?t=${Date.now()}`;
+      console.log(`[FavStations] Fetching remote plugin file from: ${remotePluginJsUrl}`);
       const res = await fetch(`${repoBaseUrl}/FavStations.js?t=${Date.now()}`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        console.warn(`[FavStations] Failed to fetch remote plugin file. Status: ${res.status}`);
+        return;
+      }
+      console.log('[FavStations] Remote plugin file fetched successfully.');
       const text = await res.text();
       // Extract version using regex
       const match = text.match(/(?:pluginVersion|version):\s*['"]([^'"]+)['"]/);
       if (match && match[1]) {
         const remoteVersion = match[1];
+        console.log(`[FavStations] Current local version: ${pluginVersion}, Remote version found: ${remoteVersion}`);
         if (isNewer(pluginVersion, remoteVersion)) {
+          console.log(`[FavStations] Update available! Remote version (${remoteVersion}) is newer than local (${pluginVersion}).`);
           handleUpdateFound(remoteVersion);
         }
       }
     } catch (e) {
-      console.warn('FavStations: Update check error', e);
+      console.error('[FavStations] Update check error:', e);
     }
   }
 
@@ -1793,12 +1814,24 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
   }
 
   function isNewer(curr, rem) {
-    const c = curr.split('.').map(Number);
-    const r = rem.split('.').map(Number);
+    console.log(`[FavStations] isNewer check: Local = "${curr}", Remote = "${rem}"`);
+    const c = curr.split('.');
+    const r = rem.split('.');
+
     for (let i = 0; i < Math.max(c.length, r.length); i++) {
-      if ((r[i] || 0) > (c[i] || 0)) return true;
-      if ((r[i] || 0) < (c[i] || 0)) return false;
+      const remotePart = r[i] || "0";
+      const currentPart = c[i] || "0";
+      
+      // localeCompare con numeric:true gestisce correttamente i numeri (es. "10" > "2")
+      // e i suffissi alfabetici (es. "1a" > "1")
+      const cmp = remotePart.localeCompare(currentPart, undefined, { numeric: true, sensitivity: 'base' });
+      
+      console.log(`[FavStations] Step ${i}: "${remotePart}" vs "${currentPart}" -> ${cmp > 0 ? 'Remote is newer' : (cmp < 0 ? 'Local is newer' : 'Equal')}`);
+      
+      if (cmp > 0) return true;
+      if (cmp < 0) return false;
     }
+    console.log(`[FavStations] Result: Remote is NOT newer.`);
     return false;
   }
 
