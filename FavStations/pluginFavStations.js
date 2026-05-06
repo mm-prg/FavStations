@@ -7,7 +7,7 @@
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.10';
+  const pluginVersion = '0.0.11';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -73,7 +73,8 @@
     
     const found1 = bodyText.includes(str1);
     const found2 = bodyText.includes(str2);
-    isAdmin = found1 || found2;
+    const found3 = !!document.getElementById('plugin-settings') || window.location.pathname.includes('/setup');
+    isAdmin = found1 || found2 || found3;
 
     console.log(`[FavStations] --- Admin Check ---`);
     console.log(`[FavStations] Searching for: "${str1}" -> Found: ${found1}`);
@@ -98,6 +99,11 @@
   document.addEventListener('DOMContentLoaded', async () => {
     checkAdminMode();
     await loadConfigAndInitialize();
+    // Se isAdmin è ancora false ma vediamo il div dei plugin, forziamo true
+    if (!isAdmin && document.getElementById('plugin-settings')) {
+      isAdmin = true;
+    }
+
     if (isAdmin) {
       checkForUpdates();
     }
@@ -105,7 +111,7 @@
 
   async function loadConfigAndInitialize() {
     // Do not show the station bar if we are on the setup page
-    if (window.location.pathname === '/setup') return;
+    if (window.location.pathname.includes('/setup') || document.getElementById('plugin-settings')) return;
 
     try {
       const res = await fetch('/plugins/FavStations/config');
@@ -1799,17 +1805,63 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       updateIcon.appendChild(redDot);
     }
 
-    // Notification text in setup page
-    if (window.location.pathname === '/setup') {
-      const pluginSettings = document.getElementById('plugin-settings');
-      if (pluginSettings) {
-        const updateMsg = `<a href="https://github.com/mm-prg/FavStations" target="_blank" style="color:#FE0830;">[FavStations] Update available: ${pluginVersion} --> ${remoteVer}</a><br>`;
-        if (pluginSettings.textContent.trim() === 'No plugin settings are available.') {
-          pluginSettings.innerHTML = updateMsg;
+    // Notification text in setup page (inject even if path is / as long as settings elements are present)
+    if (window.location.pathname.includes('/setup') || document.getElementById('plugin-settings') || window.location.pathname === '/') {
+      console.log('[FavStations] Currently on /setup page or settings found. Attempting to inject update notices.');
+      const injectNotice = () => {
+        console.log('[FavStations] injectNotice() called.');
+        let foundInTable = false;
+        // Find the specific plugin row in the setup table to match sysinfo.js style
+        const rows = document.querySelectorAll('tr');
+        console.log(`[FavStations] Found ${rows.length} table rows.`);
+        rows.forEach(row => {
+          const cells = row.querySelectorAll('td');
+          // Check if the first cell matches our plugin name
+          if (cells.length > 1 && cells[0].textContent.trim() === 'FavStations') {
+            console.log('[FavStations] Found FavStations row in plugin table.');
+            const versionCell = cells[1];
+            // Only add if not already present
+            if (!versionCell.querySelector('.favstations-setup-update-link')) {
+              const updateLink = document.createElement('a');
+              updateLink.className = 'favstations-setup-update-link';
+              updateLink.href = 'https://github.com/mm-prg/FavStations';
+              updateLink.target = '_blank';
+              updateLink.style.cssText = 'margin-left:10px; text-decoration:none;';
+              updateLink.textContent = `[Update to ${remoteVer} available]`;
+              versionCell.appendChild(updateLink);
+              console.log(`[FavStations] Successfully injected update link into table row for version ${remoteVer}.`);
+            } else {
+              console.log('[FavStations] Update link already exists in table row, skipping injection.');
+            }
+            foundInTable = true;
+          }
+        });
+
+        const pluginSettings = document.getElementById('plugin-settings');
+        if (pluginSettings) {
+          console.log('[FavStations] Found #plugin-settings element.');
+          if (!pluginSettings.querySelector('.favstations-setup-link')) {
+            const updateMsg = `<a href="https://github.com/mm-prg/FavStations" target="_blank" class="favstations-setup-link" style="text-decoration:none;">[FavStations] Update available: ${pluginVersion} --> ${remoteVer}</a><br>`;
+            if (pluginSettings.textContent.trim() === 'No plugin settings are available.') {
+              pluginSettings.innerHTML = updateMsg;
+            } else {
+              pluginSettings.innerHTML += ' ' + updateMsg;
+            }
+            console.log(`[FavStations] Successfully injected update message into plugin settings for version ${remoteVer}.`);
+          } else {
+            console.log('[FavStations] Update message already exists in plugin settings, skipping injection.');
+          }
         } else {
-          pluginSettings.innerHTML += ' ' + updateMsg;
+          console.log('[FavStations] #plugin-settings element not found.');
         }
-      }
+      };
+
+      injectNotice();
+      // Retry after delays because the setup table is often rendered dynamically
+      setTimeout(injectNotice, 1000);
+      setTimeout(injectNotice, 2000);
+      setTimeout(injectNotice, 3000);
+      setTimeout(injectNotice, 5000);
     }
   }
 
