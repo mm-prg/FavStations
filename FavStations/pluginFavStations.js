@@ -7,7 +7,7 @@
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.11';
+  const pluginVersion = '0.0.11a';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -455,6 +455,17 @@
     tempContainer.style.marginLeft = '8px';
     controlsRow.appendChild(tempContainer);
 
+    const clearTempBtn = document.createElement('button');
+    clearTempBtn.textContent = '🗑️';
+    clearTempBtn.style.cssText = `width:${dims.control.w}px; height:${dims.control.h}px; padding:0; background:#111; border:1px solid #333; border-radius:4px; color:#fff; font-size:${dims.font}px; display:inline-flex; align-items:center; justify-content:center; margin-left:4px; cursor:pointer;`;
+    clearTempBtn.onclick = () => {
+      tempSlots = new Array(5).fill(null); renderTempSlots(); showToast('All slots cleared');
+    };
+    clearTempBtn.addEventListener('mouseenter', () => showTip(clearTempBtn, 'Clear all temporary slots'));
+    clearTempBtn.addEventListener('mouseleave', hideTip);
+    clearTempBtn.addEventListener('mousedown', hideTip);
+    controlsRow.appendChild(clearTempBtn);
+
     function renderTempSlots() {
       tempContainer.innerHTML = '';
       tempSlots.forEach((item, si) => tempContainer.appendChild(createTempButton(si)));
@@ -569,6 +580,9 @@
                   const info = getCurrentStationInfo(); if (!info.freq) return showToast('No frequency to copy');
                   const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId() };
                   tempSlots[slotIndex] = item; renderTempSlots(); showToast(`Copied current to slot ${slotIndex+1}`);
+              } },
+              { label: 'Clear all temp slots', action: () => {
+                  tempSlots = new Array(5).fill(null); renderTempSlots(); showToast('All slots cleared');
               } }
             ]
           });
