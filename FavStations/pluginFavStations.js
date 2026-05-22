@@ -7,7 +7,7 @@
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.11a';
+  const pluginVersion = '0.0.12';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -86,7 +86,7 @@
     console.log(`[FavStations] ------------------`);
   }
 
-  let tempSlots = new Array(5).fill(null);
+  let tempSlots = [];
   let config = {
     remoteStationsUrl: defaultRemoteStationsUrl,
     showLogos: true,
@@ -94,12 +94,14 @@
     buttonSize: 'normal',
     customWidth: null,
     customHeight: null,
+    tempSlotCount: 5,
+    startupMode: 'server',
   };
 
   document.addEventListener('DOMContentLoaded', async () => {
     checkAdminMode();
     await loadConfigAndInitialize();
-    // Se isAdmin è ancora false ma vediamo il div dei plugin, forziamo true
+    // If isAdmin is still false but we see the plugins div, force true
     if (!isAdmin && document.getElementById('plugin-settings')) {
       isAdmin = true;
     }
@@ -112,6 +114,7 @@
   async function loadConfigAndInitialize() {
     // Do not show the station bar if we are on the setup page
     if (window.location.pathname.includes('/setup') || document.getElementById('plugin-settings')) return;
+    let serverLoaded = false;
 
     try {
       const res = await fetch('/plugins/FavStations/config');
@@ -119,32 +122,39 @@
         const serverConfig = await res.json();
         config = { ...config, ...serverConfig }; // Merges server config with defaults
         console.log('FavStations: Loaded configuration from server (/plugins/FavStations/config)');
-      } else {
-        throw new Error('Unable to retrieve configuration from server');
+        serverLoaded = true;
       }
     } catch (e) {
-      console.warn('FavStations: Unable to load configuration from server, falling back to local storage.', e);
-      // Fallback to localStorage (for compatibility or if server is unavailable)
-      try {
-        const localConfigRaw = localStorage.getItem(configKey);
-        if (localConfigRaw) {
-          config = { ...config, ...JSON.parse(localConfigRaw) };
-          console.log('FavStations: Loaded configuration from local storage fallback');
-        }
-      } catch (e) {
-        console.error('FavStations: Error loading configuration from local storage', e);
-      }
+      console.warn('FavStations: Unable to load configuration from server.', e);
+    }
+
+    // Load local storage overrides or fallbacks
+    const localConfigRaw = localStorage.getItem(configKey);
+    if (localConfigRaw && (!isAdmin || !serverLoaded)) {
+      config = { ...config, ...JSON.parse(localConfigRaw) };
+      console.log('FavStations: Loaded configuration from local storage');
     }
 
     // Ensures showLogos is a boolean
     config.showLogos = !!config.showLogos;
 
-    createBar();
-    await fetchList(); // Loads current stations (local cache or server)
+    if (config.tempSlotCount === undefined) config.tempSlotCount = 5;
+    tempSlots = new Array(config.tempSlotCount).fill(null);
 
-    // If a remote link exists, always force loading on startup
-    if (config.remoteStationsUrl || defaultRemoteStationsUrl) {
+    createBar();
+
+    const mode = config.startupMode || 'server';
+    if (mode === 'empty') {
+      listsObj = { 'Default': [] };
+      stations = [];
+      currentListName = 'Default';
+      renderButtons();
+      updateListSelect();
+    } else if (mode === 'remote') {
       await importFromRemote(true);
+    } else {
+      // Default: server
+      await fetchList();
     }
   }
 
@@ -153,45 +163,66 @@
       const w = config.customWidth;
       const h = config.customHeight;
       const scaleH = h / 44;
-      const scaleW = w / 72;
       return {
         station: { w, h },
-        control: { w: Math.round(36 * scaleW), h: Math.round(28 * scaleH) },
+        control: { w: Math.round(48 * scaleH), h: Math.round(28 * scaleH) },
         font: Math.round(16 * scaleH),
         stationFont: Math.round(14 * scaleH),
-        nameFont: Math.round(10 * scaleH)
+        nameFont: Math.round(10 * scaleH),
+        tempFont: Math.round(12 * scaleH),
+        tempNameFont: Math.round(9 * scaleH)
       };
     }
     // Default 'normal' dimensions
-    return { station: { w: 72, h: 44 }, control: { w: 36, h: 28 }, font: 16, stationFont: 14, nameFont: 10 };
+    return { station: { w: 72, h: 44 }, control: { w: 48, h: 28 }, font: 16, stationFont: 14, nameFont: 10, tempFont: 12, tempNameFont: 9 };
   }
 
   // Function to persist configuration on server and locally
+  // Function to persist configuration locally
   async function persistConfig() {
+    try {
+      localStorage.setItem(configKey, JSON.stringify(config));
+      return true;
+    } catch (e) {
+      console.error('FavStations: Error saving config', e);
+      return false;
+    }
+  }
+
+  // Function to persist configuration on the server as new defaults
+  async function persistConfigToServer() {
+    if (!isAdmin) return;
     try {
       const res = await fetch('/plugins/FavStations/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config),
       });
-      localStorage.setItem(configKey, JSON.stringify(config));
-      return res.ok;
+      if (res.ok) {
+        showToast('Global configuration updated on server.');
+        return true;
+      }
     } catch (e) {
-      console.error('FavStations: Error saving config', e);
-      localStorage.setItem(configKey, JSON.stringify(config));
-      return false;
+      console.error('FavStations: Error saving config to server', e);
     }
+    showToast('Failed to save configuration to server.');
+    return false;
   }
 
   // Imports stations from a remote JSON link
   async function importFromRemote(silent = false) {
     let url = config.remoteStationsUrl || defaultRemoteStationsUrl; // Uses value from configuration, falls back to default
     if (!silent) {
-      const inputUrl = prompt('Enter Remote Stations JSON URL:', url);
+      const inputUrl = prompt('Enter Remote Stations JSON URL (Supports GitHub):', url);
       if (inputUrl === null) return false;
       url = (inputUrl.trim()) || url;
     }
     
+    // Auto-convert standard GitHub URLs to Raw URLs
+    if (url.includes('github.com') && url.includes('/blob/')) {
+      url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+    }
+
     if (!silent) showToast('Fetching remote stations...');
     try {
       const res = await fetch('/plugins/FavStations/fetch-remote', {
@@ -206,7 +237,7 @@
         // Updates remote URL in configuration if changed
         if (url !== config.remoteStationsUrl) {
           config.remoteStationsUrl = url;
-          await persistConfig();
+          await persistConfig(); // No prompt here, it's an internal update
         }
         
         if (Array.isArray(parsed)) {
@@ -236,9 +267,13 @@
             }));
           }
           listsObj = newLists;
-          if (!listsObj[currentListName]) {
-            const keys = Object.keys(listsObj);
-            currentListName = keys.length ? keys[0] : currentListName;
+          // Dopo aver caricato le liste, assicurati che currentListName sia valido o imposta la prima lista
+          const listNames = Object.keys(listsObj);
+          if (listNames.length > 0 && !listsObj[currentListName]) {
+            currentListName = listNames[0];
+          } else if (listNames.length === 0) {
+            listsObj = { 'Default': [] };
+            currentListName = 'Default';
           }
           stations = listsObj[currentListName] || [];
         } else {
@@ -300,9 +335,13 @@
             }));
           }
           listsObj = newLists;
-          if (!listsObj[currentListName]) {
-            const keys = Object.keys(listsObj);
-            currentListName = keys.length ? keys[0] : currentListName;
+          // Dopo aver caricato le liste, assicurati che currentListName sia valido o imposta la prima lista
+          const listNames = Object.keys(listsObj);
+          if (listNames.length > 0 && !listsObj[currentListName]) {
+            currentListName = listNames[0];
+          } else if (listNames.length === 0) {
+            listsObj = { 'Default': [] };
+            currentListName = 'Default';
           }
           stations = listsObj[currentListName] || [];
         } else {
@@ -375,26 +414,85 @@
     menuBtn.style.justifyContent = 'center';
 
     menuBtn.addEventListener('mouseenter', () => {
-      let tooltipText = `FavStations (v${pluginVersion})`;
-      if (updateAvailable && isAdmin) {
-        tooltipText += `\n🚀 Update available (v${remoteVersionFound})`;
-      }
+      let tooltipText = `Main Menu (v${pluginVersion})\nManage, Import, and Export your station lists.`;
       showTip(menuBtn, tooltipText);
     });
     menuBtn.addEventListener('mouseleave', hideTip);
     menuBtn.addEventListener('mousedown', hideTip);
 
     menuBtn.onclick = (e) => {
+      e.stopPropagation();
       hideTip();
+      const prev = document.getElementById('favstations-context-menu');
+      if (prev) {
+        prev.remove();
+        return;
+      }
       const rect = menuBtn.getBoundingClientRect();
       const menuItems = [
-        { label: 'Manage Lists', action: openManager },
-        { label: 'Import Lists (JSON)', action: importStations },
-        { label: 'Export Lists (JSON)', action: exportStations },
-        { label: 'Import from Remote URL', action: () => importFromRemote(false) },
-        { label: 'Buttons size', action: openDimensionEditor },
+        { label: 'Manage Lists', tooltip: 'Organize your collections: rename, delete, or change the order of lists.', action: openManager },
+        { label: 'Import Lists (JSON)', tooltip: 'Load a JSON file containing station collections from your computer.', action: importStations },
+        { label: 'Export Lists (JSON)', tooltip: 'Save all your current collections to a JSON file for backup.', action: exportStations },
+      ];
+      showStationContextMenu(rect.left, rect.bottom + 5, {
+        items: menuItems
+      });
+    };
+
+    // Settings Button (next to Menu)
+    const settingsBtn = document.createElement('button');
+    settingsBtn.textContent = '⚙️';
+    settingsBtn.id = 'favstations-settings-btn';
+    settingsBtn.style.width = dims.control.w + 'px';
+    settingsBtn.style.height = dims.control.h + 'px';
+    settingsBtn.style.padding = '0';
+    settingsBtn.style.background = '#111';
+    settingsBtn.style.border = '1px solid #333';
+    settingsBtn.style.borderRadius = '4px';
+    settingsBtn.style.color = '#fff';
+    settingsBtn.style.fontSize = dims.font + 'px';
+    settingsBtn.style.display = 'inline-flex';
+    settingsBtn.style.alignItems = 'center';
+    settingsBtn.style.justifyContent = 'center';
+
+    settingsBtn.addEventListener('mouseenter', () => showTip(settingsBtn, 'Display Settings\nResize buttons, change slot count, or toggle icons.'));
+    settingsBtn.addEventListener('mouseleave', hideTip);
+    settingsBtn.addEventListener('mousedown', hideTip);
+
+    settingsBtn.onclick = (e) => {
+      e.stopPropagation();
+      hideTip();
+      const prev = document.getElementById('favstations-context-menu');
+      if (prev) {
+        prev.remove();
+        return;
+      }
+      const rect = settingsBtn.getBoundingClientRect();
+      const settingsMenuItems = [
+        { label: 'Buttons size', tooltip: 'Adjust the width and height of station buttons.', action: openDimensionEditor },
+        {
+          label: 'Number of temp slots',
+          tooltip: 'Set how many temporary memory slots are visible (1-20).',
+          action: async () => {
+            const val = prompt('Enter the number of temporary slots (1-20):', config.tempSlotCount);
+            if (val === null) return;
+            const n = parseInt(val, 10);
+            if (isNaN(n) || n < 1 || n > 20) return alert('Invalid number. Please enter a value between 1 and 20.');
+            
+            config.tempSlotCount = n;
+            const oldSlots = tempSlots;
+            tempSlots = new Array(n).fill(null);
+            for (let i = 0; i < Math.min(oldSlots.length, n); i++) {
+              tempSlots[i] = oldSlots[i];
+            }
+            
+            await persistConfig();
+            renderTempSlots();
+          }
+        },
         {
           label: config.showLogos ? 'Hide station icons' : 'Show station icons',
+          tooltip: 'Switch between showing station logos or frequency text.',
           action: async () => {
             config.showLogos = !config.showLogos;
             await persistConfig();
@@ -404,32 +502,65 @@
           }
         }
       ];
-
-      if (updateAvailable && isAdmin) {
-        menuItems.unshift({
-          label: `🚀 Update Now (v${remoteVersionFound})`,
-          action: async () => {
-            if (confirm(`Update FavStations to version ${remoteVersionFound}?`)) {
-              await performUpdate();
-            }
-          }
-        });
-      }
-
       showStationContextMenu(rect.left, rect.bottom + 5, {
-        items: menuItems
+        items: settingsMenuItems
       });
     };
 
     // Controls row (manage, save current, list select)
     const controlsRow = document.createElement('div');
-    controlsRow.style.cssText = 'display:flex; gap:8px; align-items:center;';
-    controlsRow.appendChild(menuBtn);
+    controlsRow.style.cssText = 'display:flex; gap:8px; align-items:center; flex-wrap:wrap;';
+    controlsRow.appendChild(settingsBtn); // Ora l'ingranaggio è il primo
+    controlsRow.appendChild(menuBtn); // Ora il menu è il secondo
+
+    // Admin Options Button (Admin only)
+    if (isAdmin) {
+      const adminBtn = document.createElement('button');
+      adminBtn.textContent = '🛠️';
+      adminBtn.id = 'favstations-admin-btn';
+      adminBtn.style.cssText = `width:${dims.control.w}px; height:${dims.control.h}px; padding:0; background:#111; border:1px solid #333; border-radius:4px; color:#fff; font-size:${dims.font}px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer;`;
+      adminBtn.addEventListener('mouseenter', () => {
+        let tooltipText = 'Admin Options\nServer sync, startup settings, and updates.';
+        if (updateAvailable) tooltipText += `\n🚀 Update available (v${remoteVersionFound})`;
+        showTip(adminBtn, tooltipText);
+      });
+      adminBtn.addEventListener('mouseleave', hideTip);
+      adminBtn.addEventListener('mousedown', hideTip);
+      adminBtn.onclick = (e) => {
+        e.stopPropagation();
+        const prev = document.getElementById('favstations-context-menu');
+        if (prev) {
+          prev.remove();
+        }
+        hideTip();
+        const rect = adminBtn.getBoundingClientRect();
+        const items = [
+          { label: 'Save Lists to Server', tooltip: "Save all current lists permanently to the server's data file.", action: persistStations },
+          { label: 'Edit default options', tooltip: 'Review and save current layout and startup settings as the new default for everyone.', action: openGlobalConfigEditor }
+        ];
+        if (updateAvailable) {
+          items.unshift({
+            label: `🚀 Update Now (v${remoteVersionFound})`,
+            tooltip: 'Upgrade the plugin to the latest version automatically.',
+            action: async () => {
+              if (confirm(`Update FavStations to version ${remoteVersionFound}?`)) {
+                await performUpdate();
+              }
+            }
+          });
+        }
+        showStationContextMenu(rect.left, rect.bottom + 5, { items });
+      };
+      controlsRow.appendChild(adminBtn);
+    }
 
     // List selector (shows all existing lists)
     const listSelect = document.createElement('select');
     listSelect.id = 'favstations-list-select';
-    listSelect.style.cssText = `margin-left: 8px; padding: 0 8px; height: ${dims.control.h}px; background: #222; color: #fff; border: 1px solid #444; border-radius: 6px; font-size: 13px; outline: none; cursor: pointer; vertical-align: middle;`;
+    listSelect.style.cssText = `padding: 0 8px; height: ${dims.control.h}px; background: #222; color: #fff; border: 1px solid #444; border-radius: 6px; font-size: ${Math.round(13 * (dims.control.h / 28))}px; outline: none; cursor: pointer; vertical-align: middle;`;
+    listSelect.addEventListener('mouseenter', () => showTip(listSelect, 'Select the active station list.'));
+    listSelect.addEventListener('mouseleave', hideTip);
+    listSelect.addEventListener('mousedown', hideTip);
     listSelect.onchange = () => {
       const val = listSelect.value;
       if (!val) return;
@@ -448,23 +579,24 @@
     };
     controlsRow.appendChild(listSelect);
 
-    // Temporary slot buttons container (5 slots)
-    const tempContainer = document.createElement('div');
-    tempContainer.style.display = 'flex';
-    tempContainer.style.gap = '6px';
-    tempContainer.style.marginLeft = '8px';
-    controlsRow.appendChild(tempContainer);
-
     const clearTempBtn = document.createElement('button');
-    clearTempBtn.textContent = '🗑️';
-    clearTempBtn.style.cssText = `width:${dims.control.w}px; height:${dims.control.h}px; padding:0; background:#111; border:1px solid #333; border-radius:4px; color:#fff; font-size:${dims.font}px; display:inline-flex; align-items:center; justify-content:center; margin-left:4px; cursor:pointer;`;
+    clearTempBtn.textContent = '❌'; // Red cross icon
+    clearTempBtn.style.cssText = `width:${dims.control.w}px; height:${dims.control.h}px; padding:0; background:#111; border:1px solid #333; border-radius:4px; color:#FF0000; font-size:${dims.font}px; display:inline-flex; align-items:center; justify-content:center; margin-left:4px; cursor:pointer;`;
     clearTempBtn.onclick = () => {
-      tempSlots = new Array(5).fill(null); renderTempSlots(); showToast('All slots cleared');
+      tempSlots = new Array(config.tempSlotCount).fill(null); renderTempSlots(); showToast('All slots cleared');
     };
     clearTempBtn.addEventListener('mouseenter', () => showTip(clearTempBtn, 'Clear all temporary slots'));
     clearTempBtn.addEventListener('mouseleave', hideTip);
     clearTempBtn.addEventListener('mousedown', hideTip);
     controlsRow.appendChild(clearTempBtn);
+
+    // Temporary slot buttons container (5 slots)
+    const tempContainer = document.createElement('div');
+    tempContainer.style.display = 'flex';
+    tempContainer.style.flexWrap = 'wrap';
+    tempContainer.style.gap = '6px';
+    tempContainer.style.marginLeft = '8px';
+    controlsRow.appendChild(tempContainer);
 
     function renderTempSlots() {
       tempContainer.innerHTML = '';
@@ -483,10 +615,10 @@
       btn.style.background = '#111';
       btn.style.border = '1px solid #333';
       btn.style.color = '#fff';
-      btn.style.width = dims.station.w + 'px';
-      btn.style.height = dims.station.h + 'px';
+      btn.style.width = dims.control.w + 'px';
+      btn.style.height = dims.control.h + 'px';
       btn.style.overflow = 'hidden';
-      btn.style.fontSize = (dims.stationFont - 2) + 'px';
+      btn.style.fontSize = dims.tempFont + 'px';
 
       const tooltipText = data 
         ? (data.freq ? `${data.freq} MHz` : '') + (data.freq && data.name ? ' — ' : '') + (data.name || '') + (data.itu ? ` [${data.itu}]` : '') + (data.picode ? ` (${data.picode})` : '')
@@ -523,14 +655,14 @@
         if (data && data.freq) {
           const freqEl = document.createElement('div');
           freqEl.style.fontWeight = 'bold';
-          freqEl.style.fontSize = dims.stationFont + 'px';
+          freqEl.style.fontSize = dims.tempFont + 'px';
           const freqNum = parseFloat(data.freq);
-          freqEl.textContent = !isNaN(freqNum) ? (freqNum < 30 ? freqNum.toFixed(3) : freqNum.toFixed(1)) : data.freq;
+          freqEl.textContent = !isNaN(freqNum) ? (freqNum > 30 ? freqNum.toFixed(2) : freqNum.toFixed(3)) : data.freq;
           ph.appendChild(freqEl);
         }
         if (data && data.name) {
           const nameEl = document.createElement('div');
-          nameEl.style.fontSize = dims.nameFont + 'px';
+          nameEl.style.fontSize = dims.tempNameFont + 'px';
           nameEl.style.lineHeight = '1.1';
           nameEl.style.width = 'calc(100% - 4px)';
           nameEl.style.whiteSpace = 'nowrap';
@@ -560,7 +692,6 @@
           const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId() };
           tempSlots[si] = item;
           renderTempSlots();
-          showToast(`Saved to slot ${si+1}`);
         }
       };
 
@@ -579,10 +710,7 @@
               { label: 'Copy current into this', action: () => {
                   const info = getCurrentStationInfo(); if (!info.freq) return showToast('No frequency to copy');
                   const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId() };
-                  tempSlots[slotIndex] = item; renderTempSlots(); showToast(`Copied current to slot ${slotIndex+1}`);
-              } },
-              { label: 'Clear all temp slots', action: () => {
-                  tempSlots = new Array(5).fill(null); renderTempSlots(); showToast('All slots cleared');
+                  tempSlots[slotIndex] = item; renderTempSlots();
               } }
             ]
           });
@@ -735,22 +863,28 @@
     menu.style.display = 'flex';
     menu.style.flexDirection = 'column';
 
-    function makeItem(text, cb) {
+    function makeItem(text, cb, tooltip) {
       const it = document.createElement('div');
       it.textContent = text;
       it.style.padding = '6px 8px';
       it.style.cursor = 'pointer';
-      it.onmouseenter = () => it.style.background = 'rgba(255,255,255,0.06)';
-      it.onmouseleave = () => it.style.background = 'transparent';
-      it.onclick = (ev) => { ev.stopPropagation(); cb(); menu.remove(); };
+      it.onmouseenter = () => {
+        it.style.background = 'rgba(255,255,255,0.06)';
+        if (tooltip) showTip(it, tooltip);
+      };
+      it.onmouseleave = () => {
+        it.style.background = 'transparent';
+        hideTip();
+      };
+      it.onclick = (ev) => { ev.stopPropagation(); hideTip(); cb(ev); menu.remove(); };
       return it;
     }
 
-    (opts.items || []).forEach(i => menu.appendChild(makeItem(i.label, i.action)));
+    (opts.items || []).forEach(i => menu.appendChild(makeItem(i.label, i.action, i.tooltip)));
 
     // close on any click outside or escape
     setTimeout(() => {
-      const remove = () => { menu.remove(); document.removeEventListener('click', remove); document.removeEventListener('keydown', onKey); };
+      const remove = () => { hideTip(); menu.remove(); document.removeEventListener('click', remove); document.removeEventListener('keydown', onKey); };
       function onKey(ev) { if (ev.key === 'Escape') remove(); }
       document.addEventListener('click', remove);
       document.addEventListener('keydown', onKey);
@@ -824,7 +958,7 @@
         freqEl.style.fontWeight = 'bold';
         freqEl.style.fontSize = dims.stationFont + 'px';
         const freqNum = parseFloat(st.freq);
-        freqEl.textContent = !isNaN(freqNum) ? (freqNum < 30 ? freqNum.toFixed(3) : freqNum.toFixed(1)) : st.freq;
+        freqEl.textContent = !isNaN(freqNum) ? (freqNum > 30 ? freqNum.toFixed(2) : freqNum.toFixed(3)) : st.freq;
         ph.appendChild(freqEl);
       }
       if (st.name) {
@@ -962,6 +1096,7 @@
 
   // fetch list from server, fallback to localStorage (support multiple lists in localStorage)
   async function fetchList() {
+    let serverLoaded = false;
     try {
       const res = await fetch('/plugins/FavStations/list');
       if (res.ok) {
@@ -970,30 +1105,38 @@
         if (serverLists && typeof serverLists === 'object' && !Array.isArray(serverLists) && Object.keys(serverLists).length > 0) {
           listsObj = serverLists;
           console.log('FavStations: Loaded station lists from server (/plugins/FavStations/list)');
-          // Ensure current list exists, or default to first
-          if (!listsObj[currentListName]) {
-            currentListName = Object.keys(listsObj)[0] || 'Default';
-          }
-          stations = listsObj[currentListName] || [];
-          saveListsLocal();
-          renderButtons();
-          updateListSelect();
-          return;
+          serverLoaded = true;
         }
       }
     } catch (e) {
       // ignore
     }
 
-    // fallback: load lists object from localStorage
-    listsObj = loadListsLocal();
-    console.log('FavStations: Loaded station lists from local storage fallback');
-    // if no lists stored, try legacy single list key
+    // If not admin, or server failed, load/merge from local storage
+    const localLists = loadListsLocal();
+    if (localLists && Object.keys(localLists).length > 0) {
+      if (!isAdmin || !serverLoaded) {
+        listsObj = { ...listsObj, ...localLists };
+        console.log('FavStations: Loaded station lists from local storage');
+      }
+    }
+
+    // If no lists are loaded, initialize with a "Default" list
     if (!listsObj || Object.keys(listsObj).length === 0) {
       const old = loadLocal();
       listsObj = {};
       listsObj[currentListName] = old || [];
     }
+
+    // Assicurati che currentListName sia valido, o imposta la prima lista disponibile
+    const listNames = Object.keys(listsObj);
+    if (listNames.length > 0 && !listsObj[currentListName]) {
+      currentListName = listNames[0];
+    } else if (listNames.length === 0) { // Questo caso dovrebbe essere già coperto, ma come salvaguardia
+      listsObj = { 'Default': [] };
+      currentListName = 'Default';
+    }
+
     stations = listsObj[currentListName] || [];
     renderButtons();
     const span = document.getElementById('favstations-list-name'); if (span) span.textContent = currentListName;
@@ -1354,7 +1497,6 @@
         sourceArr[index] = item;
         renderTempSlots();
         overlay.remove();
-        showToast(`Saved slot ${index + 1}`);
       } else {
         // Regular station
         if (!isNew) {
@@ -1401,10 +1543,14 @@
     listsObj[currentListName] = stations;
     saveListsLocal();
 
-    // Save the entire lists object to the server
-    const ok = await saveServer(listsObj);
-    if (!ok) showToast('Saved locally (server unavailable)');
-    else showToast('Saved');
+    if (isAdmin) {
+      // Save the entire lists object to the server
+      const ok = await saveServer(listsObj);
+      if (!ok) showToast('Saved locally (server unavailable)');
+      else showToast('Saved');
+    } else {
+      showToast('Saved (locally)');
+    }
   }
 
   // Get current antenna value
@@ -1733,6 +1879,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       const opt = document.createElement('option'); opt.value = currentListName; opt.textContent = currentListName; sel.appendChild(opt);
       // add new list option
       const newOpt = document.createElement('option'); newOpt.value = '__new__'; newOpt.textContent = '➕ New list...'; sel.appendChild(newOpt);
+      updateSelectWidth(sel);
       return;
     }
     names.forEach(n => {
@@ -1744,6 +1891,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     // add New list option at the end
     const newOpt = document.createElement('option'); newOpt.value = '__new__'; newOpt.textContent = '➕ New list...'; sel.appendChild(newOpt);
     sel.value = currentListName;
+    updateSelectWidth(sel);
   }
 
   // small helpers
@@ -1761,6 +1909,27 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     t.style.zIndex = 11000;
     document.body.appendChild(t);
     setTimeout(() => t.remove(), 1800);
+  }
+
+  function updateSelectWidth(sel) {
+    if (!sel || sel.options.length === 0) return;
+    
+    const tempSpan = document.createElement('span');
+    tempSpan.style.visibility = 'hidden';
+    tempSpan.style.position = 'absolute';
+    tempSpan.style.whiteSpace = 'nowrap';
+    tempSpan.style.font = getComputedStyle(sel).font;
+    document.body.appendChild(tempSpan);
+
+    let maxWidth = 0;
+    for (let i = 0; i < sel.options.length; i++) {
+      tempSpan.textContent = sel.options[i].text;
+      const w = tempSpan.getBoundingClientRect().width;
+      if (w > maxWidth) maxWidth = w;
+    }
+
+    sel.style.width = (maxWidth + 32) + 'px';
+    document.body.removeChild(tempSpan);
   }
 
   function escapeHtml(s) {
@@ -1802,9 +1971,9 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     remoteVersionFound = remoteVer;
 
     // Passive UI notifications
-    const menuBtn = document.getElementById('favstations-menu-btn');
-    if (menuBtn) {
-      menuBtn.style.color = '#FE0830';
+    const adminBtn = document.getElementById('favstations-admin-btn');
+    if (adminBtn) {
+      adminBtn.style.color = '#FE0830';
     }
 
     // Red dot on sidenav puzzle icon
@@ -1888,8 +2057,8 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       const remotePart = r[i] || "0";
       const currentPart = c[i] || "0";
       
-      // localeCompare con numeric:true gestisce correttamente i numeri (es. "10" > "2")
-      // e i suffissi alfabetici (es. "1a" > "1")
+      // localeCompare with numeric:true correctly handles numbers (e.g., "10" > "2")
+      // and alphabetical suffixes (e.g., "1a" > "1")
       const cmp = remotePart.localeCompare(currentPart, undefined, { numeric: true, sensitivity: 'base' });
       
       console.log(`[FavStations] Step ${i}: "${remotePart}" vs "${currentPart}" -> ${cmp > 0 ? 'Remote is newer' : (cmp < 0 ? 'Local is newer' : 'Equal')}`);
@@ -1922,7 +2091,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
   }
 
   // Visual dimension editor
-  function openDimensionEditor() {
+  function openDimensionEditor(callbackOnSave = null) {
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed; left:0; top:0; right:0; bottom:0; z-index:20000; background:rgba(0,0,0,0.85); display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; font-family:sans-serif; backdrop-filter:blur(4px);';
 
@@ -1984,13 +2153,17 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       const rect = resizeContainer.getBoundingClientRect();
       config.customWidth = Math.round(rect.width); 
       config.customHeight = Math.round(rect.height);
-      config.buttonSize = 'custom';
       
-      await persistConfig();
-      const oldBar = document.getElementById(pluginId);
-      if (oldBar) oldBar.remove();
-      createBar();
-      renderButtons();
+      if (callbackOnSave) {
+        callbackOnSave(config.customWidth, config.customHeight);
+      } else {
+        config.buttonSize = 'custom';
+        await persistConfig(); // Persist locally
+        const oldBar = document.getElementById(pluginId);
+        if (oldBar) oldBar.remove();
+        createBar();
+        renderButtons();
+      }
       overlay.remove();
       ro.disconnect();
     };
@@ -2075,6 +2248,344 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
 
     alertOverlay.appendChild(alertBox);
     document.body.appendChild(alertOverlay);
+  }
+
+  function openStartupModeSelector() {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed; left:0; top:0; right:0; bottom:0; z-index:20002; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.6);';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'width:420px; max-width:96%; padding:20px; border-radius:8px; background:#fff; color:#000; font-family:sans-serif; display:flex; flex-direction:column; gap:16px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
+
+    const title = document.createElement('h3');
+    title.textContent = 'Startup Loading Mode';
+    title.style.margin = '0';
+    box.appendChild(title);
+
+    const form = document.createElement('div');
+    form.style.display = 'flex';
+    form.style.flexDirection = 'column';
+    form.style.gap = '12px';
+
+    let selectedMode = config.startupMode || 'server';
+
+    const modes = [
+      { id: 'server', label: 'Server (Local JSON)' },
+      { id: 'remote', label: 'Remote (URL/GitHub)' },
+      { id: 'empty', label: 'Empty list' }
+    ];
+
+    const remoteContainer = document.createElement('div');
+    remoteContainer.style.display = (selectedMode === 'remote' ? 'block' : 'none');
+    remoteContainer.style.marginTop = '4px';
+    remoteContainer.style.paddingLeft = '24px';
+
+    const remoteLabel = document.createElement('div');
+    remoteLabel.textContent = 'Remote Stations JSON URL:';
+    remoteLabel.style.fontSize = '12px';
+    remoteLabel.style.marginBottom = '4px';
+    remoteLabel.style.color = '#555';
+    remoteContainer.appendChild(remoteLabel);
+
+    const remoteInput = document.createElement('input');
+    remoteInput.type = 'text';
+    remoteInput.value = config.remoteStationsUrl || '';
+    remoteInput.style.width = '100%';
+    remoteInput.style.padding = '6px';
+    remoteInput.style.boxSizing = 'border-box';
+    remoteInput.placeholder = 'https://...';
+    remoteContainer.appendChild(remoteInput);
+
+    modes.forEach(m => {
+      const label = document.createElement('label');
+      label.style.display = 'flex';
+      label.style.alignItems = 'center';
+      label.style.gap = '8px';
+      label.style.cursor = 'pointer';
+      label.style.fontSize = '14px';
+
+      const rb = document.createElement('input');
+      rb.type = 'radio';
+      rb.name = 'fs-startup-mode';
+      rb.value = m.id;
+      rb.checked = (selectedMode === m.id);
+      rb.onchange = () => {
+        selectedMode = m.id;
+        remoteContainer.style.display = (selectedMode === 'remote' ? 'block' : 'none');
+      };
+
+      label.appendChild(rb);
+      label.appendChild(document.createTextNode(m.label));
+      form.appendChild(label);
+      if (m.id === 'remote') form.appendChild(remoteContainer);
+    });
+
+    box.appendChild(form);
+
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '10px';
+    actions.style.justifyContent = 'flex-end';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save';
+    saveBtn.style.padding = '6px 16px';
+    saveBtn.onclick = async () => {
+      config.startupMode = selectedMode;
+      if (selectedMode === 'remote') {
+        let url = remoteInput.value.trim();
+        if (url.includes('github.com') && url.includes('/blob/')) {
+          url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+        }
+        config.remoteStationsUrl = url;
+      }
+      await persistConfig();
+      showToast(`Startup configuration saved`);
+      overlay.remove();
+    };
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.padding = '6px 16px';
+    cancelBtn.onclick = () => overlay.remove();
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(saveBtn);
+    box.appendChild(actions);
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  }
+
+  // Admin function to edit and save global configuration defaults
+  function openGlobalConfigEditor() {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed; left:0; top:0; right:0; bottom:0; z-index:20002; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.6);';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'width:480px; max-width:96%; padding:20px; border-radius:8px; background:#fff; color:#000; font-family:sans-serif; display:flex; flex-direction:column; gap:16px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
+
+    const title = document.createElement('h3');
+    title.textContent = 'Edit Global Default Configuration';
+    title.style.margin = '0';
+    box.appendChild(title);
+
+    const form = document.createElement('div');
+    form.style.display = 'flex';
+    form.style.flexDirection = 'column';
+    form.style.gap = '12px';
+
+    // --- Startup Mode ---
+    const startupModeGroup = document.createElement('fieldset');
+    startupModeGroup.style.border = '1px solid #ccc';
+    startupModeGroup.style.borderRadius = '4px';
+    startupModeGroup.style.padding = '10px';
+    startupModeGroup.style.margin = '0';
+    const legend = document.createElement('legend');
+    legend.textContent = 'Startup Loading Mode';
+    legend.style.fontWeight = 'bold';
+    startupModeGroup.appendChild(legend);
+
+    let currentStartupMode = config.startupMode || 'server';
+    const modes = [
+      { id: 'server', label: 'Server (Local JSON)' },
+      { id: 'remote', label: 'Remote (URL/GitHub)' },
+      { id: 'empty', label: 'Empty list' }
+    ];
+
+    const remoteContainer = document.createElement('div');
+    remoteContainer.style.display = (currentStartupMode === 'remote' ? 'block' : 'none');
+    remoteContainer.style.marginTop = '4px';
+    remoteContainer.style.paddingLeft = '24px';
+
+    const remoteLabel = document.createElement('div');
+    remoteLabel.textContent = 'Remote Stations JSON URL:';
+    remoteLabel.style.fontSize = '12px';
+    remoteLabel.style.marginBottom = '4px';
+    remoteLabel.style.color = '#555';
+    remoteContainer.appendChild(remoteLabel);
+
+    const remoteInput = document.createElement('input');
+    remoteInput.type = 'text';
+    remoteInput.value = config.remoteStationsUrl || '';
+    remoteInput.style.width = '100%';
+    remoteInput.style.padding = '6px';
+    remoteInput.style.boxSizing = 'border-box';
+    remoteInput.placeholder = 'https://...';
+    remoteContainer.appendChild(remoteInput);
+
+    modes.forEach(m => {
+      const label = document.createElement('label');
+      label.style.display = 'flex';
+      label.style.alignItems = 'center';
+      label.style.gap = '8px';
+      label.style.cursor = 'pointer';
+      label.style.fontSize = '14px';
+
+      const rb = document.createElement('input');
+      rb.type = 'radio';
+      rb.name = 'fs-global-startup-mode';
+      rb.value = m.id;
+      rb.checked = (currentStartupMode === m.id);
+      rb.onchange = () => {
+        currentStartupMode = m.id;
+        remoteContainer.style.display = (currentStartupMode === 'remote' ? 'block' : 'none');
+      };
+      label.appendChild(rb);
+      label.appendChild(document.createTextNode(m.label));
+      startupModeGroup.appendChild(label);
+    });
+    startupModeGroup.appendChild(remoteContainer);
+    form.appendChild(startupModeGroup);
+
+    // --- Show Logos ---
+    const showLogosLabel = document.createElement('label');
+    showLogosLabel.style.display = 'flex';
+    showLogosLabel.style.alignItems = 'center';
+    showLogosLabel.style.gap = '8px';
+    showLogosLabel.style.cursor = 'pointer';
+    const showLogosCheckbox = document.createElement('input');
+    showLogosCheckbox.type = 'checkbox';
+    showLogosCheckbox.checked = config.showLogos;
+    showLogosLabel.appendChild(showLogosCheckbox);
+    showLogosLabel.appendChild(document.createTextNode('Show Station Logos'));
+    form.appendChild(showLogosLabel);
+
+    // --- Temp Slot Count ---
+    const tempSlotLabel = document.createElement('label');
+    tempSlotLabel.textContent = 'Number of Temporary Slots (1-20):';
+    tempSlotLabel.style.display = 'flex';
+    tempSlotLabel.style.flexDirection = 'column';
+    tempSlotLabel.style.gap = '4px';
+    const tempSlotInput = document.createElement('input');
+    tempSlotInput.type = 'number';
+    tempSlotInput.min = '1';
+    tempSlotInput.max = '20';
+    tempSlotInput.value = config.tempSlotCount;
+    tempSlotInput.style.padding = '6px';
+    tempSlotInput.style.boxSizing = 'border-box';
+    tempSlotInput.style.width = '100px'; // Make it smaller
+    tempSlotLabel.appendChild(tempSlotInput);
+    form.appendChild(tempSlotLabel);
+
+    // --- Button Dimensions ---
+    const dimsLabel = document.createElement('label');
+    dimsLabel.textContent = 'Default Button Dimensions (Width x Height):';
+    dimsLabel.style.display = 'flex';
+    dimsLabel.style.flexDirection = 'column';
+    dimsLabel.style.gap = '4px';
+    
+    const dimsRow = document.createElement('div');
+    dimsRow.style.display = 'flex';
+    dimsRow.style.gap = '8px';
+    dimsRow.style.alignItems = 'center';
+
+    const widthInput = document.createElement('input');
+    widthInput.type = 'number';
+    widthInput.min = '40';
+    widthInput.value = config.customWidth || 72;
+    widthInput.style.padding = '6px';
+    widthInput.style.width = '80px';
+
+    const heightInput = document.createElement('input');
+    heightInput.type = 'number';
+    heightInput.min = '24';
+    heightInput.value = config.customHeight || 44;
+    heightInput.style.padding = '6px';
+    heightInput.style.width = '80px';
+
+    dimsRow.appendChild(widthInput);
+    dimsRow.appendChild(document.createTextNode(' x '));
+    dimsRow.appendChild(heightInput);
+    dimsLabel.appendChild(dimsRow);
+
+    // NEW: Visual Editor Button
+    const visualEditorBtn = document.createElement('button');
+    visualEditorBtn.textContent = 'Visual Editor';
+    visualEditorBtn.style.padding = '6px 10px';
+    visualEditorBtn.style.marginLeft = '10px';
+    visualEditorBtn.style.background = '#007bff';
+    visualEditorBtn.style.color = '#fff';
+    visualEditorBtn.style.border = 'none';
+    visualEditorBtn.style.borderRadius = '4px';
+    visualEditorBtn.style.cursor = 'pointer';
+    visualEditorBtn.addEventListener('mouseenter', () => showTip(visualEditorBtn, 'Open a visual editor to drag and resize buttons.'));
+    visualEditorBtn.addEventListener('mouseleave', hideTip);
+    visualEditorBtn.addEventListener('mousedown', hideTip);
+
+    visualEditorBtn.onclick = () => {
+      // Hide this modal temporarily
+      overlay.style.display = 'none';
+
+      openDimensionEditor((newWidth, newHeight) => {
+        // Callback from openDimensionEditor
+        widthInput.value = newWidth;
+        heightInput.value = newHeight;
+        // Show this modal again
+        overlay.style.display = 'flex';
+      });
+    };
+    dimsRow.appendChild(visualEditorBtn); // Add the new button
+    form.appendChild(dimsLabel);
+
+    box.appendChild(form);
+
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '10px';
+    actions.style.justifyContent = 'flex-end';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save';
+    saveBtn.style.padding = '6px 16px';
+    saveBtn.onclick = async () => {
+      // Update global config object with values from the modal
+      config.startupMode = currentStartupMode;
+      if (currentStartupMode === 'remote') {
+        let url = remoteInput.value.trim();
+        if (url.includes('github.com') && url.includes('/blob/')) {
+          url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+        }
+        config.remoteStationsUrl = url;
+      } else {
+        // If not remote, ensure remoteStationsUrl is cleared or set to default
+        config.remoteStationsUrl = defaultRemoteStationsUrl;
+      }
+      config.showLogos = showLogosCheckbox.checked;
+      const newTempSlotCount = parseInt(tempSlotInput.value, 10);
+      if (!isNaN(newTempSlotCount) && newTempSlotCount >= 1 && newTempSlotCount <= 20) {
+        config.tempSlotCount = newTempSlotCount;
+      } else {
+        showToast('Invalid temporary slot count. Must be between 1 and 20.');
+        return;
+      }
+
+      // Update dimensions
+      config.customWidth = parseInt(widthInput.value, 10) || 72;
+      config.customHeight = parseInt(heightInput.value, 10) || 44;
+      config.buttonSize = 'custom';
+
+      // Now persist this updated config to the server
+      await persistConfigToServer();
+      overlay.remove();
+      // Re-render the bar to reflect potential changes (e.g., temp slot count)
+      const oldBar = document.getElementById(pluginId);
+      if (oldBar) oldBar.remove();
+      createBar();
+      renderButtons();
+    };
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.padding = '6px 16px';
+    cancelBtn.onclick = () => overlay.remove();
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(saveBtn);
+    box.appendChild(actions);
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
   }
 
 })();

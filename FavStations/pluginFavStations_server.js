@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * FavStations Plugin for FM-DX Webserver (v0.0.11a)
+ * FavStations Plugin for FM-DX Webserver (v0.0.12)
  * ************************************************
  */
 
@@ -17,8 +17,7 @@ const { logInfo, logError } = require('../../server/console');
 logInfo("[FavStations] Backend script is being loaded...");
 
 const pluginName = "FavStations";
-const dataDir = path.join(__dirname, 'files');
-const dataPath = path.join(dataDir, 'favstations.json');
+const dataPath = path.join(__dirname, 'FavStations_data.json');
 
 // Plugin configuration (options like remote URL, icon display)
 const configDir = path.resolve(__dirname, '../../plugins_configs');
@@ -33,6 +32,8 @@ function loadConfig() {
       const defaultConfig = {
         remoteStationsUrl: 'https://pastebin.com/raw/s7RMKj4g',
         showLogos: true,
+        tempSlotCount: 5,
+        startupMode: 'server',
         autoImportDone: false, // To track if automatic import has already been performed
       };
       saveConfig(defaultConfig); // Creates the file with default values
@@ -72,7 +73,8 @@ function loadData() {
 
 function saveData(list) {
   try {
-    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    const dir = path.dirname(dataPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(dataPath, JSON.stringify(list || {}, null, 2), 'utf8');
     return true;
   } catch (e) {
