@@ -32,7 +32,7 @@ function loadConfig() {
       const defaultConfig = {
         remoteStationsUrl: '',
         showLogos: true,
-        tempSlotCount: 5,
+        tempSlotCount: 8,
         buttonSize: 'custom',
         customWidth: 120,
         customHeight: 60,

@@ -130,7 +130,7 @@
     // Ensures showLogos is a boolean
     config.showLogos = !!config.showLogos;
 
-    if (config.tempSlotCount === undefined) config.tempSlotCount = 5;
+    if (config.tempSlotCount === undefined) config.tempSlotCount = 8;
     tempSlots = new Array(config.tempSlotCount).fill(null);
 
     createBar();
@@ -465,12 +465,12 @@
         { label: 'Buttons size', tooltip: 'Adjust the width and height of station buttons.', action: openDimensionEditor },
         {
           label: 'Number of temp slots',
-          tooltip: 'Set how many temporary memory slots are visible (1-20).',
+          tooltip: 'Set how many temporary memory slots are visible (1-30).',
           action: async () => {
-            const val = prompt('Enter the number of temporary slots (1-20):', config.tempSlotCount);
+            const val = prompt('Enter the number of temporary slots (1-30):', config.tempSlotCount);
             if (val === null) return;
             const n = parseInt(val, 10);
-            if (isNaN(n) || n < 1 || n > 20) return alert('Invalid number. Please enter a value between 1 and 20.');
+            if (isNaN(n) || n < 1 || n > 30) return alert('Invalid number. Please enter a value between 1 and 30.');
             
             config.tempSlotCount = n;
             const oldSlots = tempSlots;
@@ -575,162 +575,19 @@
     clearTempBtn.addEventListener('mousedown', hideTip);
     controlsRow.appendChild(clearTempBtn);
 
-    // Temporary slot buttons container (5 slots)
+    // Temporary slot buttons container (8 slots)
     const tempContainer = document.createElement('div');
+    tempContainer.id = 'favstations-temp-container';
     tempContainer.style.display = 'flex';
     tempContainer.style.flexWrap = 'wrap';
     tempContainer.style.gap = '6px';
     tempContainer.style.marginLeft = '8px';
     controlsRow.appendChild(tempContainer);
 
-    function renderTempSlots() {
-      tempContainer.innerHTML = '';
-      tempSlots.forEach((item, si) => tempContainer.appendChild(createTempButton(si)));
-    }
-
-    function createTempButton(si) {
-      const dims = getButtonDims();
-      const data = tempSlots[si];
-      const btn = document.createElement('button');
-      btn.style.display = 'flex';
-      btn.style.alignItems = 'center';
-      btn.style.justifyContent = 'center';
-      btn.style.padding = '4px';
-      btn.style.borderRadius = '6px';
-      btn.style.background = '#111';
-      btn.style.border = '1px solid #333';
-      btn.style.color = '#fff';
-      btn.style.width = dims.control.w + 'px';
-      btn.style.height = dims.control.h + 'px';
-      btn.style.overflow = 'hidden';
-      btn.style.fontSize = dims.tempFont + 'px';
-
-      const tooltipText = data 
-        ? (data.freq ? `${data.freq} MHz` : '') + (data.freq && data.name ? ' — ' : '') + (data.name || '') + (data.itu ? ` [${data.itu}]` : '') + (data.picode ? ` (${data.picode})` : '')
-        : `Temp slot ${si+1}: click to save current, click again to tune`;
-      btn.addEventListener('mouseenter', () => showTip(btn, tooltipText));
-      btn.addEventListener('mouseleave', hideTip);
-      btn.addEventListener('mousedown', hideTip);
-
-      if (config.showLogos && data && data.logo) {
-        const img = document.createElement('img');
-        img.src = data.logo;
-        img.alt = data.name || '';
-        img.style.width = '100%';
-        img.style.height = '100%';
-        img.style.objectFit = 'contain';
-        img.style.borderRadius = '4px';
-        btn.appendChild(img);
-      } else {
-        const ph = document.createElement('div');
-        ph.style.width = '100%';
-        ph.style.height = '100%';
-        ph.style.background = '#333';
-        ph.style.borderRadius = '4px';
-        ph.style.display = 'flex';
-        ph.style.flexDirection = 'column';
-        ph.style.alignItems = 'center';
-        ph.style.justifyContent = 'center';
-        ph.style.color = '#fff';
-        ph.style.padding = '2px';
-        ph.style.textAlign = 'center';
-        ph.style.overflow = 'hidden';
-        ph.style.boxSizing = 'border-box';
-
-        if (data && data.freq) {
-          const freqEl = document.createElement('div');
-          freqEl.style.fontWeight = 'bold';
-          freqEl.style.fontSize = dims.tempFont + 'px';
-          const freqNum = parseFloat(data.freq);
-          freqEl.textContent = !isNaN(freqNum) ? (freqNum > 30 ? freqNum.toFixed(2) : freqNum.toFixed(3)) : data.freq;
-          ph.appendChild(freqEl);
-        }
-        if (data && data.name) {
-          const nameEl = document.createElement('div');
-          nameEl.style.fontSize = dims.tempNameFont + 'px';
-          nameEl.style.lineHeight = '1.1';
-          nameEl.style.width = 'calc(100% - 4px)';
-          nameEl.style.whiteSpace = 'nowrap';
-          nameEl.style.overflow = 'hidden';
-          nameEl.style.textOverflow = 'ellipsis';
-          nameEl.textContent = data.name;
-          ph.appendChild(nameEl);
-        }
-        btn.appendChild(ph);
-      }
-
-      btn.onclick = async () => {
-        if (tempSlots[si]) {
-          const freq = parseFloat(tempSlots[si].freq);
-          if (!isNaN(freq) && window.socket && socket.readyState === WebSocket.OPEN) {
-            try {
-              socket.send('T' + Math.round(Number(freq) * 1000));
-              showToast(`Tuned ${tempSlots[si].freq}`);
-            } catch (err) { console.error('FavStations: tuning error', err); showToast(`Error tuning ${tempSlots[si].freq}`); }
-          } else {
-            try { await navigator.clipboard.writeText(String(tempSlots[si].freq)); showToast(`Copied ${tempSlots[si].freq}`); } catch (e) { showToast(String(tempSlots[si].freq)); }
-          }
-        } else {
-          // save current to slot
-          const info = getCurrentStationInfo();
-          if (!info.freq) return showToast('No frequency to save');
-          const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId() };
-          tempSlots[si] = item;
-          renderTempSlots();
-        }
-      };
-
-      btn.ondblclick = () => openGenericEditor({ isTemp: true, index: si });
-
-      // long-press and right-click: open custom context menu
-      (function attachContextHandlers(btnEl, slotIndex) {
-        const LONG_PRESS_MS = 600;
-        let pressTimer = null;
-        function openMenuAt(x, y) {
-          btnEl._longPressed = true;
-          showStationContextMenu(x, y, {
-            items: [
-              { label: 'Edit station', action: () => openGenericEditor({ isTemp: true, index: slotIndex }) },
-              { label: 'Delete station', action: () => { tempSlots[slotIndex] = null; renderTempSlots(); showToast(`Deleted slot ${slotIndex+1}`); } },
-              { label: 'Copy current into this', action: () => {
-                  const info = getCurrentStationInfo(); if (!info.freq) return showToast('No frequency to copy');
-                  const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId() };
-                  tempSlots[slotIndex] = item; renderTempSlots();
-              } }
-            ]
-          });
-        }
-
-        btnEl.addEventListener('contextmenu', (ev) => { ev.preventDefault(); ev.stopPropagation(); openMenuAt(ev.clientX, ev.clientY); });
-
-        btnEl.addEventListener('mousedown', (ev) => {
-          if (ev.button !== 0) return;
-          pressTimer = setTimeout(() => {
-            const rect = btnEl.getBoundingClientRect();
-            openMenuAt(rect.left + rect.width/2, rect.top + rect.height/2);
-          }, LONG_PRESS_MS);
-        });
-        ['mouseup','mouseleave'].forEach(n => btnEl.addEventListener(n, () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } }));
-        btnEl.addEventListener('touchstart', (ev) => {
-          pressTimer = setTimeout(() => {
-            const touch = ev.touches && ev.touches[0];
-            openMenuAt(touch ? touch.clientX : btnEl.getBoundingClientRect().left, touch ? touch.clientY : btnEl.getBoundingClientRect().top);
-          }, LONG_PRESS_MS);
-        }, { passive: true });
-        btnEl.addEventListener('touchend', () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } });
-      })(btn, si);
-
-      return btn;
-    }
-
-    // render initial empty temp slots
-    renderTempSlots();
-
-    // append controls row to bar
-    bar.appendChild(controlsRow);
-
     // populate select now if listsObj already loaded
     setTimeout(() => updateListSelect(), 50);
+
+    renderTempSlots();
 
     // Buttons row (station buttons) placed on its own line
     const buttonsRow = document.createElement('div');
@@ -746,6 +603,148 @@
     bar.appendChild(buttonsRow);
 
     document.body.appendChild(bar);
+  }
+
+  function renderTempSlots() {
+    const tempContainer = document.getElementById('favstations-temp-container');
+    if (!tempContainer) return;
+    tempContainer.innerHTML = '';
+    tempSlots.forEach((item, si) => tempContainer.appendChild(createTempButton(si)));
+  }
+
+  function createTempButton(si) {
+    const dims = getButtonDims();
+    const data = tempSlots[si];
+    const btn = document.createElement('button');
+    btn.style.display = 'flex';
+    btn.style.alignItems = 'center';
+    btn.style.justifyContent = 'center';
+    btn.style.padding = '4px';
+    btn.style.borderRadius = '6px';
+    btn.style.background = '#111';
+    btn.style.border = '1px solid #333';
+    btn.style.color = '#fff';
+    btn.style.width = dims.control.w + 'px';
+    btn.style.height = dims.control.h + 'px';
+    btn.style.overflow = 'hidden';
+    btn.style.fontSize = dims.tempFont + 'px';
+
+    const tooltipText = data 
+      ? (data.freq ? `${data.freq} MHz` : '') + (data.freq && data.name ? ' — ' : '') + (data.name || '') + (data.itu ? ` [${data.itu}]` : '') + (data.picode ? ` (${data.picode})` : '')
+      : `Temp slot ${si+1}: click to save current, click again to tune`;
+    btn.addEventListener('mouseenter', () => showTip(btn, tooltipText));
+    btn.addEventListener('mouseleave', hideTip);
+    btn.addEventListener('mousedown', hideTip);
+
+    if (config.showLogos && data && data.logo) {
+      const img = document.createElement('img');
+      img.src = data.logo;
+      img.alt = data.name || '';
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'contain';
+      img.style.borderRadius = '4px';
+      btn.appendChild(img);
+    } else {
+      const ph = document.createElement('div');
+      ph.style.width = '100%';
+      ph.style.height = '100%';
+      ph.style.background = '#333';
+      ph.style.borderRadius = '4px';
+      ph.style.display = 'flex';
+      ph.style.flexDirection = 'column';
+      ph.style.alignItems = 'center';
+      ph.style.justifyContent = 'center';
+      ph.style.color = '#fff';
+      ph.style.padding = '2px';
+      ph.style.textAlign = 'center';
+      ph.style.overflow = 'hidden';
+      ph.style.boxSizing = 'border-box';
+
+      if (data && data.freq) {
+        const freqEl = document.createElement('div');
+        freqEl.style.fontWeight = 'bold';
+        freqEl.style.fontSize = dims.tempFont + 'px';
+        const freqNum = parseFloat(data.freq);
+        freqEl.textContent = !isNaN(freqNum) ? (freqNum > 30 ? freqNum.toFixed(2) : freqNum.toFixed(3)) : data.freq;
+        ph.appendChild(freqEl);
+      }
+      if (data && data.name) {
+        const nameEl = document.createElement('div');
+        nameEl.style.fontSize = dims.tempNameFont + 'px';
+        nameEl.style.lineHeight = '1.1';
+        nameEl.style.width = 'calc(100% - 4px)';
+        nameEl.style.whiteSpace = 'nowrap';
+        nameEl.style.overflow = 'hidden';
+        nameEl.style.textOverflow = 'ellipsis';
+        nameEl.textContent = data.name;
+        ph.appendChild(nameEl);
+      }
+      btn.appendChild(ph);
+    }
+
+    btn.onclick = async () => {
+      if (tempSlots[si]) {
+        const freq = parseFloat(tempSlots[si].freq);
+        if (!isNaN(freq) && window.socket && socket.readyState === WebSocket.OPEN) {
+          try {
+            socket.send('T' + Math.round(Number(freq) * 1000));
+            showToast(`Tuned ${tempSlots[si].freq}`);
+          } catch (err) { console.error('FavStations: tuning error', err); showToast(`Error tuning ${tempSlots[si].freq}`); }
+        } else {
+          try { await navigator.clipboard.writeText(String(tempSlots[si].freq)); showToast(`Copied ${tempSlots[si].freq}`); } catch (e) { showToast(String(tempSlots[si].freq)); }
+        }
+      } else {
+        // save current to slot
+        const info = getCurrentStationInfo();
+        if (!info.freq) return showToast('No frequency to save');
+        const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId() };
+        tempSlots[si] = item;
+        renderTempSlots();
+      }
+    };
+
+    btn.ondblclick = () => openGenericEditor({ isTemp: true, index: si });
+
+    // long-press and right-click: open custom context menu
+    (function attachContextHandlers(btnEl, slotIndex) {
+      const LONG_PRESS_MS = 600;
+      let pressTimer = null;
+      function openMenuAt(x, y) {
+        btnEl._longPressed = true;
+        showStationContextMenu(x, y, {
+          items: [
+            { label: 'Edit station', action: () => openGenericEditor({ isTemp: true, index: slotIndex }) },
+            { label: 'Delete station', action: () => { tempSlots[slotIndex] = null; renderTempSlots(); showToast(`Deleted slot ${slotIndex+1}`); } },
+            { label: 'Copy current into this', action: () => {
+                const info = getCurrentStationInfo(); if (!info.freq) return showToast('No frequency to copy');
+                const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId() };
+                tempSlots[slotIndex] = item; renderTempSlots();
+            } }
+          ]
+        });
+      }
+
+      btnEl.addEventListener('contextmenu', (ev) => { ev.preventDefault(); ev.stopPropagation(); openMenuAt(ev.clientX, ev.clientY); });
+
+      btnEl.addEventListener('mousedown', (ev) => {
+        if (ev.button !== 0) return;
+        pressTimer = setTimeout(() => {
+          const rect = btnEl.getBoundingClientRect();
+          openMenuAt(rect.left + rect.width/2, rect.top + rect.height/2);
+        }, LONG_PRESS_MS);
+      });
+      ['mouseup','mouseleave'].forEach(n => btnEl.addEventListener(n, () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } }));
+      btnEl.addEventListener('touchstart', (ev) => {
+        pressTimer = setTimeout(() => {
+          const touch = ev.touches && ev.touches[0];
+          openMenuAt(touch ? touch.clientX : btnEl.getBoundingClientRect().left, touch ? touch.clientY : btnEl.getBoundingClientRect().top);
+        }, LONG_PRESS_MS);
+      }, { passive: true });
+      btnEl.addEventListener('touchend', () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } });
+    })(btn, si);
+
+    return btn;
   }
 
   function renderButtons() {
@@ -2294,14 +2293,14 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
 
     // --- Temp Slot Count ---
     const tempSlotLabel = document.createElement('label');
-    tempSlotLabel.textContent = 'Number of Temporary Slots (1-20):';
+    tempSlotLabel.textContent = 'Number of Temporary Slots (1-30):';
     tempSlotLabel.style.display = 'flex';
     tempSlotLabel.style.flexDirection = 'column';
     tempSlotLabel.style.gap = '4px';
     const tempSlotInput = document.createElement('input');
     tempSlotInput.type = 'number';
     tempSlotInput.min = '1';
-    tempSlotInput.max = '20';
+    tempSlotInput.max = '30';
     tempSlotInput.value = config.tempSlotCount;
     tempSlotInput.style.padding = '6px';
     tempSlotInput.style.boxSizing = 'border-box';
@@ -2422,10 +2421,10 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       }
       config.showLogos = showLogosCheckbox.checked;
       const newTempSlotCount = parseInt(tempSlotInput.value, 10);
-      if (!isNaN(newTempSlotCount) && newTempSlotCount >= 1 && newTempSlotCount <= 20) {
+      if (!isNaN(newTempSlotCount) && newTempSlotCount >= 1 && newTempSlotCount <= 30) {
         config.tempSlotCount = newTempSlotCount;
       } else {
-        showToast('Invalid temporary slot count. Must be between 1 and 20.');
+        showToast('Invalid temporary slot count. Must be between 1 and 30.');
         return;
       }
 
