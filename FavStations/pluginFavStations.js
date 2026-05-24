@@ -699,8 +699,6 @@
           antenna: info.antenna || '',
           logo: info.logo || '',
           itu: info.itu || '',
-          // Preserve existing picode if available, otherwise generate new
-          picode: getPiCode() || (tempSlots[si] && tempSlots[si].picode) || generateId()
           picode: getPiCode() || generateId()
         };
         tempSlots[si] = item;
@@ -982,8 +980,6 @@
           antenna: info.antenna || '',
           logo: info.logo || '',
           itu: info.itu || '',
-          // Preserve existing picode if available, otherwise generate new
-          picode: getPiCode() || (stations[idx] && stations[idx].picode) || generateId()
           picode: getPiCode() || generateId()
         };
         stations[idx] = item;
