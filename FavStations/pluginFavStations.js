@@ -7,7 +7,7 @@
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.12';
+  const pluginVersion = '0.0.13';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -56,14 +56,11 @@
 
   const storageKey = 'FavStationsList_v1';
   const listsKey = 'FavStationsLists_v1';
-  const repoBaseUrl = 'https://raw.githubusercontent.com/mm-prg/FavStations/main';
-  const defaultRemoteStationsUrl = 'https://pastebin.com/raw/s7RMKj4g'; // Fallback URL if not configured
+  const defaultRemoteStationsUrl = ''; // Fallback URL if not configured
   const configKey = 'FavStations_config_v1'; // Key for configuration localStorage fallback
   let currentListName = 'Default';
   let listsObj = {};
   let stations = [];
-  let updateAvailable = false;
-  let remoteVersionFound = null;
   let isAdmin = false;
 
   function checkAdminMode() {
@@ -90,11 +87,10 @@
   let config = {
     remoteStationsUrl: defaultRemoteStationsUrl,
     showLogos: true,
-    autoImportDone: false,
-    buttonSize: 'normal',
-    customWidth: null,
-    customHeight: null,
-    tempSlotCount: 5,
+    buttonSize: 'custom',
+    customWidth: 120,
+    customHeight: 60,
+    tempSlotCount: 8,
     startupMode: 'server',
   };
 
@@ -104,10 +100,6 @@
     // If isAdmin is still false but we see the plugins div, force true
     if (!isAdmin && document.getElementById('plugin-settings')) {
       isAdmin = true;
-    }
-
-    if (isAdmin) {
-      checkForUpdates();
     }
   });
 
@@ -219,8 +211,9 @@
     }
     
     // Auto-convert standard GitHub URLs to Raw URLs
-    if (url.includes('github.com') && url.includes('/blob/')) {
-      url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+    if (url.includes('github.com') && !url.includes('gist.github.com')) {
+      url = url.replace('github.com', 'raw.githubusercontent.com')
+               .replace(/\/(blob|raw)\//, '/');
     }
 
     if (!silent) showToast('Fetching remote stations...');
@@ -500,6 +493,11 @@
             renderTempSlots();
             updateListSelect();
           }
+      },
+      {
+        label: '?',
+        tooltip: 'Visit the GitHub repository for help and documentation.',
+        action: () => window.open('https://github.com/mm-prg/FavStations', '_blank')
         }
       ];
       showStationContextMenu(rect.left, rect.bottom + 5, {
@@ -520,9 +518,7 @@
       adminBtn.id = 'favstations-admin-btn';
       adminBtn.style.cssText = `width:${dims.control.w}px; height:${dims.control.h}px; padding:0; background:#111; border:1px solid #333; border-radius:4px; color:#fff; font-size:${dims.font}px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer;`;
       adminBtn.addEventListener('mouseenter', () => {
-        let tooltipText = 'Admin Options\nServer sync, startup settings, and updates.';
-        if (updateAvailable) tooltipText += `\n🚀 Update available (v${remoteVersionFound})`;
-        showTip(adminBtn, tooltipText);
+        showTip(adminBtn, 'Admin Options\nServer sync and startup settings.');
       });
       adminBtn.addEventListener('mouseleave', hideTip);
       adminBtn.addEventListener('mousedown', hideTip);
@@ -538,17 +534,6 @@
           { label: 'Save Lists to Server', tooltip: "Save all current lists permanently to the server's data file.", action: persistStations },
           { label: 'Edit default options', tooltip: 'Review and save current layout and startup settings as the new default for everyone.', action: openGlobalConfigEditor }
         ];
-        if (updateAvailable) {
-          items.unshift({
-            label: `🚀 Update Now (v${remoteVersionFound})`,
-            tooltip: 'Upgrade the plugin to the latest version automatically.',
-            action: async () => {
-              if (confirm(`Update FavStations to version ${remoteVersionFound}?`)) {
-                await performUpdate();
-              }
-            }
-          });
-        }
         showStationContextMenu(rect.left, rect.bottom + 5, { items });
       };
       controlsRow.appendChild(adminBtn);
@@ -768,42 +753,19 @@
     if (!container) return;
     container.innerHTML = '';
     const dims = getButtonDims();
+    const GAP = 6;
 
-    // Compute how many buttons fit per row based on available space
-    const buttonsRow = container.parentElement || container;
-    const availableWidth = (buttonsRow && buttonsRow.clientWidth) || (window.innerWidth - 32);
-    const BUTTON_WIDTH = dims.station.w; // must match createStationButton width
-    const GAP = 6; // gap used between buttons
-    const perButtonTotal = BUTTON_WIDTH + GAP;
-    const MAX_PER_ROW = Math.max(1, Math.floor(availableWidth / perButtonTotal));
+    container.style.display = 'flex';
+    container.style.flexWrap = 'wrap';
+    container.style.gap = GAP + 'px';
+    container.style.flexDirection = 'row';
+    container.style.alignItems = 'flex-start';
+    container.style.width = '100%';
 
-    const rows = Math.ceil(stations.length / MAX_PER_ROW);
-    if (rows <= 1) {
-      container.style.flexDirection = 'row';
-      const row = document.createElement('div');
-      row.style.display = 'flex';
-      row.style.gap = GAP + 'px';
-      stations.forEach((st, idx) => row.appendChild(createStationButton(st, idx)));
-      container.appendChild(row);
-      // append save current button after the last station button
-      row.appendChild(createSaveCurrentButton());
-    } else {
-      // create multiple rows stacked vertically
-      container.style.flexDirection = 'column';
-      let lastRow = null;
-      for (let r = 0; r < rows; r++) {
-        const row = document.createElement('div');
-        row.style.display = 'flex';
-        row.style.gap = GAP + 'px';
-        if (r < rows - 1) row.style.marginBottom = '6px';
-        const start = r * MAX_PER_ROW;
-        const slice = stations.slice(start, start + MAX_PER_ROW);
-        slice.forEach((st, i) => row.appendChild(createStationButton(st, start + i)));
-        container.appendChild(row);
-        lastRow = row;
-      }
-      if (lastRow) lastRow.appendChild(createSaveCurrentButton());
-    }
+    stations.forEach((st, idx) => {
+      container.appendChild(createStationButton(st, idx));
+    });
+    container.appendChild(createSaveCurrentButton());
 
     // createSaveCurrentButton: returns a button element appended after station buttons
     function createSaveCurrentButton() {
@@ -838,6 +800,12 @@
         renderButtons();
         showToast('Station saved');
       };
+      btn.addEventListener('dragover', (ev) => {
+        ev.preventDefault();
+        const container = document.getElementById('favstations-buttons');
+        const dragging = container.querySelector('.favstations-is-dragging');
+        if (dragging) container.insertBefore(dragging, btn);
+      });
       return btn;
     }
   }
@@ -921,6 +889,7 @@
     btn.addEventListener('mouseleave', hideTip);
     btn.addEventListener('mousedown', hideTip);
 
+    btn.setAttribute('data-station-idx', idx);
     if (st.picode) btn.dataset.id = st.picode;
 
     // fixed, uniform size for all buttons
@@ -979,6 +948,25 @@
 
     btn.onclick = async (e) => {
       if (btn._longPressed) { btn._longPressed = false; return; }
+
+      // Ctrl+Click to overwrite station
+      if (e.ctrlKey) {
+        const info = getCurrentStationInfo();
+        if (!info.freq) return showToast('No frequency to save');
+        const item = {
+          freq: String(info.freq),
+          name: info.name || '',
+          antenna: info.antenna || '',
+          logo: info.logo || '',
+          itu: info.itu || '',
+          // Preserve existing picode if available, otherwise generate new
+          picode: getPiCode() || (stations[idx] && stations[idx].picode) || generateId()
+        };
+        stations[idx] = item;
+        await persistStations();
+        renderButtons();
+        return showToast(`Station overwritten with current: ${item.freq}`);
+      }
       const freq = parseFloat(st.freq);
       if (!isNaN(freq) && window.socket && socket.readyState === WebSocket.OPEN) {
         try {
@@ -1005,31 +993,37 @@
     btn.addEventListener('dragstart', (ev) => {
       ev.dataTransfer.effectAllowed = 'move';
       ev.dataTransfer.setData('text/plain', String(idx));
-      btn.style.opacity = '0.5';
+      setTimeout(() => {
+        btn.style.opacity = '0.4';
+        btn.classList.add('favstations-is-dragging');
+      }, 0);
     });
 
     btn.addEventListener('dragend', () => {
       btn.style.opacity = '1';
-      btn.style.transform = '';
+      btn.classList.remove('favstations-is-dragging');
     });
 
     btn.addEventListener('dragover', (ev) => {
       ev.preventDefault();
       ev.dataTransfer.dropEffect = 'move';
-      btn.style.transform = 'scale(1.05)';
-    });
-
-    btn.addEventListener('dragleave', () => {
-      btn.style.transform = '';
+      const container = document.getElementById('favstations-buttons');
+      const dragging = container.querySelector('.favstations-is-dragging');
+      if (!dragging || dragging === btn) return;
+      const rect = btn.getBoundingClientRect();
+      const midpoint = rect.left + rect.width / 2;
+      if (ev.clientX < midpoint) {
+        container.insertBefore(dragging, btn);
+      } else {
+        container.insertBefore(dragging, btn.nextSibling);
+      }
     });
 
     btn.addEventListener('drop', async (ev) => {
       ev.preventDefault();
-      btn.style.transform = '';
-      const srcIdx = parseInt(ev.dataTransfer.getData('text/plain'), 10);
-      if (isNaN(srcIdx) || srcIdx === idx) return;
-      const [moved] = stations.splice(srcIdx, 1);
-      stations.splice(idx, 0, moved);
+      const container = document.getElementById('favstations-buttons');
+      const buttonEls = Array.from(container.querySelectorAll('button[data-station-idx]'));
+      stations = buttonEls.map(el => stations[parseInt(el.getAttribute('data-station-idx'), 10)]);
       await persistStations();
       renderButtons();
     });
@@ -1936,160 +1930,6 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     return String(s || '').replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]; });
   }
 
-  // Auto-update mechanism
-  async function checkForUpdates() {
-    console.log('[FavStations] Starting update check...');
-    try {
-      // Fetch remote FavStations.js to check version
-      const remotePluginJsUrl = `${repoBaseUrl}/FavStations.js?t=${Date.now()}`;
-      console.log(`[FavStations] Fetching remote plugin file from: ${remotePluginJsUrl}`);
-      const res = await fetch(`${repoBaseUrl}/FavStations.js?t=${Date.now()}`);
-      if (!res.ok) {
-        console.warn(`[FavStations] Failed to fetch remote plugin file. Status: ${res.status}`);
-        return;
-      }
-      console.log('[FavStations] Remote plugin file fetched successfully.');
-      const text = await res.text();
-      // Extract version using regex
-      const match = text.match(/(?:pluginVersion|version):\s*['"]([^'"]+)['"]/);
-      if (match && match[1]) {
-        const remoteVersion = match[1];
-        console.log(`[FavStations] Current local version: ${pluginVersion}, Remote version found: ${remoteVersion}`);
-        if (isNewer(pluginVersion, remoteVersion)) {
-          console.log(`[FavStations] Update available! Remote version (${remoteVersion}) is newer than local (${pluginVersion}).`);
-          handleUpdateFound(remoteVersion);
-        }
-      }
-    } catch (e) {
-      console.error('[FavStations] Update check error:', e);
-    }
-  }
-
-  function handleUpdateFound(remoteVer) {
-    if (!isAdmin) return;
-    updateAvailable = true;
-    remoteVersionFound = remoteVer;
-
-    // Passive UI notifications
-    const adminBtn = document.getElementById('favstations-admin-btn');
-    if (adminBtn) {
-      adminBtn.style.color = '#FE0830';
-    }
-
-    // Red dot on sidenav puzzle icon
-    const updateIcon = document.querySelector('.wrapper-outer #navigation .sidenav-content .fa-puzzle-piece') 
-                     || document.querySelector('.wrapper-outer .sidenav-content') 
-                     || document.querySelector('.sidenav-content');
-    
-    if (updateIcon && !updateIcon.querySelector('.favstations-update-dot')) {
-      const redDot = document.createElement('span');
-      redDot.className = 'favstations-update-dot';
-      redDot.style.cssText = 'display:block; width:12px; height:12px; border-radius:50%; background-color:#FE0830; margin-left:82px; margin-top:-12px;';
-      updateIcon.appendChild(redDot);
-    }
-
-    // Notification text in setup page (inject even if path is / as long as settings elements are present)
-    if (window.location.pathname.includes('/setup') || document.getElementById('plugin-settings') || window.location.pathname === '/') {
-      console.log('[FavStations] Currently on /setup page or settings found. Attempting to inject update notices.');
-      const injectNotice = () => {
-        console.log('[FavStations] injectNotice() called.');
-        let foundInTable = false;
-        // Find the specific plugin row in the setup table to match sysinfo.js style
-        const rows = document.querySelectorAll('tr');
-        console.log(`[FavStations] Found ${rows.length} table rows.`);
-        rows.forEach(row => {
-          const cells = row.querySelectorAll('td');
-          // Check if the first cell matches our plugin name
-          if (cells.length > 1 && cells[0].textContent.trim() === 'FavStations') {
-            console.log('[FavStations] Found FavStations row in plugin table.');
-            const versionCell = cells[1];
-            // Only add if not already present
-            if (!versionCell.querySelector('.favstations-setup-update-link')) {
-              const updateLink = document.createElement('a');
-              updateLink.className = 'favstations-setup-update-link';
-              updateLink.href = 'https://github.com/mm-prg/FavStations';
-              updateLink.target = '_blank';
-              updateLink.style.cssText = 'margin-left:10px; text-decoration:none;';
-              updateLink.textContent = `[Update to ${remoteVer} available]`;
-              versionCell.appendChild(updateLink);
-              console.log(`[FavStations] Successfully injected update link into table row for version ${remoteVer}.`);
-            } else {
-              console.log('[FavStations] Update link already exists in table row, skipping injection.');
-            }
-            foundInTable = true;
-          }
-        });
-
-        const pluginSettings = document.getElementById('plugin-settings');
-        if (pluginSettings) {
-          console.log('[FavStations] Found #plugin-settings element.');
-          if (!pluginSettings.querySelector('.favstations-setup-link')) {
-            const updateMsg = `<a href="https://github.com/mm-prg/FavStations" target="_blank" class="favstations-setup-link" style="text-decoration:none;">[FavStations] Update available: ${pluginVersion} --> ${remoteVer}</a><br>`;
-            if (pluginSettings.textContent.trim() === 'No plugin settings are available.') {
-              pluginSettings.innerHTML = updateMsg;
-            } else {
-              pluginSettings.innerHTML += ' ' + updateMsg;
-            }
-            console.log(`[FavStations] Successfully injected update message into plugin settings for version ${remoteVer}.`);
-          } else {
-            console.log('[FavStations] Update message already exists in plugin settings, skipping injection.');
-          }
-        } else {
-          console.log('[FavStations] #plugin-settings element not found.');
-        }
-      };
-
-      injectNotice();
-      // Retry after delays because the setup table is often rendered dynamically
-      setTimeout(injectNotice, 1000);
-      setTimeout(injectNotice, 2000);
-      setTimeout(injectNotice, 3000);
-      setTimeout(injectNotice, 5000);
-    }
-  }
-
-  function isNewer(curr, rem) {
-    console.log(`[FavStations] isNewer check: Local = "${curr}", Remote = "${rem}"`);
-    const c = curr.split('.');
-    const r = rem.split('.');
-
-    for (let i = 0; i < Math.max(c.length, r.length); i++) {
-      const remotePart = r[i] || "0";
-      const currentPart = c[i] || "0";
-      
-      // localeCompare with numeric:true correctly handles numbers (e.g., "10" > "2")
-      // and alphabetical suffixes (e.g., "1a" > "1")
-      const cmp = remotePart.localeCompare(currentPart, undefined, { numeric: true, sensitivity: 'base' });
-      
-      console.log(`[FavStations] Step ${i}: "${remotePart}" vs "${currentPart}" -> ${cmp > 0 ? 'Remote is newer' : (cmp < 0 ? 'Local is newer' : 'Equal')}`);
-      
-      if (cmp > 0) return true;
-      if (cmp < 0) return false;
-    }
-    console.log(`[FavStations] Result: Remote is NOT newer.`);
-    return false;
-  }
-
-  async function performUpdate() {
-    showToast('Updating plugin...');
-    try {
-      const res = await fetch('/plugins/FavStations/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ baseUrl: repoBaseUrl })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        alert('Update successful! The page will reload.');
-        location.reload();
-      } else {
-        alert('Update failed: ' + (data.error || 'Unknown error'));
-      }
-    } catch (e) {
-      alert('Update failed: ' + e.message);
-    }
-  }
-
   // Visual dimension editor
   function openDimensionEditor(callbackOnSave = null) {
     const overlay = document.createElement('div');
@@ -2334,8 +2174,9 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       config.startupMode = selectedMode;
       if (selectedMode === 'remote') {
         let url = remoteInput.value.trim();
-        if (url.includes('github.com') && url.includes('/blob/')) {
-          url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+        if (url.includes('github.com') && !url.includes('gist.github.com')) {
+          url = url.replace('github.com', 'raw.githubusercontent.com')
+                   .replace(/\/(blob|raw)\//, '/');
         }
         config.remoteStationsUrl = url;
       }
@@ -2543,9 +2384,37 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       config.startupMode = currentStartupMode;
       if (currentStartupMode === 'remote') {
         let url = remoteInput.value.trim();
-        if (url.includes('github.com') && url.includes('/blob/')) {
-          url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+        if (url.includes('github.com') && !url.includes('gist.github.com')) {
+          url = url.replace('github.com', 'raw.githubusercontent.com')
+                   .replace(/\/(blob|raw)\//, '/');
         }
+
+        // Validate the URL format
+        try {
+          new URL(url);
+        } catch (e) {
+          showToast('Invalid Remote Stations URL format.');
+          return; // Prevent saving if URL is invalid
+        }
+
+        // Validate if the remote URL is reachable and returns valid data before saving
+        showToast('Checking remote URL...');
+        try {
+          const testRes = await fetch('/plugins/FavStations/fetch-remote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+          });
+          const testData = await testRes.json();
+          if (!testData || !testData.ok) {
+            alert(`Remote validation failed: ${testData.error || 'Resource not found or invalid JSON'}`);
+            return; // Prevent saving if the URL returns 404 or other errors
+          }
+        } catch (err) {
+          alert(`Could not validate remote URL: ${err.message}`);
+          return;
+        }
+
         config.remoteStationsUrl = url;
       } else {
         // If not remote, ensure remoteStationsUrl is cleared or set to default

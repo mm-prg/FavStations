@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * FavStations Plugin for FM-DX Webserver (v0.0.12)
+ * FavStations Plugin for FM-DX Webserver (v0.0.13)
  * ************************************************
  */
 
@@ -30,11 +30,13 @@ function loadConfig() {
     if (!fs.existsSync(configPath)) {
       // Default configuration values
       const defaultConfig = {
-        remoteStationsUrl: 'https://pastebin.com/raw/s7RMKj4g',
+        remoteStationsUrl: '',
         showLogos: true,
         tempSlotCount: 5,
-        startupMode: 'server',
-        autoImportDone: false, // To track if automatic import has already been performed
+        buttonSize: 'custom',
+        customWidth: 120,
+        customHeight: 60,
+        startupMode: 'server'
       };
       saveConfig(defaultConfig); // Creates the file with default values
       return defaultConfig;
@@ -109,42 +111,6 @@ endpointsRouter.post('/plugins/FavStations/save', express.json(), (req, res) => 
   } catch (e) {
     logError(`[${pluginName}] Error in /save:`, e);
     res.status(500).json({ ok: false });
-  }
-});
-
-// UPDATE plugin files from GitHub
-endpointsRouter.post('/plugins/FavStations/update', express.json(), async (req, res) => {
-  try {
-    const { baseUrl } = req.body;
-    if (!baseUrl) return res.status(400).json({ ok: false, error: 'Missing baseUrl' });
-
-    const download = (url, dest) => new Promise((resolve, reject) => {
-      const file = fs.createWriteStream(dest);
-      https.get(url, (response) => {
-        if (response.statusCode !== 200) {
-          fs.unlink(dest, () => {});
-          return reject(new Error(`Status ${response.statusCode} for ${url}`));
-        }
-        response.pipe(file);
-        file.on('finish', () => file.close(() => resolve()));
-      }).on('error', (err) => {
-        fs.unlink(dest, () => {});
-        reject(err);
-      });
-    });
-
-    logInfo(`[${pluginName}] Updating from ${baseUrl}...`);
-    
-    // Update files: server plugin, client plugin, and main config
-    await download(`${baseUrl}/FavStations/pluginFavStations_server.js`, path.join(__dirname, 'pluginFavStations_server.js'));
-    await download(`${baseUrl}/FavStations/pluginFavStations.js`, path.join(__dirname, 'pluginFavStations.js'));
-    await download(`${baseUrl}/FavStations.js`, path.join(__dirname, '../FavStations.js'));
-
-    logInfo(`[${pluginName}] Update completed successfully.`);
-    res.json({ ok: true });
-  } catch (e) {
-    logError(`[${pluginName}] Update failed:`, e);
-    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
