@@ -7,7 +7,7 @@
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.13';
+  const pluginVersion = '0.0.14';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -587,8 +587,6 @@
     // populate select now if listsObj already loaded
     setTimeout(() => updateListSelect(), 50);
 
-    renderTempSlots();
-
     // Buttons row (station buttons) placed on its own line
     const buttonsRow = document.createElement('div');
     buttonsRow.style.display = 'flex';
@@ -600,9 +598,14 @@
     container.style.display = 'flex';
     container.style.gap = '6px';
     buttonsRow.appendChild(container);
+
+    bar.appendChild(controlsRow);
     bar.appendChild(buttonsRow);
 
     document.body.appendChild(bar);
+
+    renderTempSlots();
+    renderButtons();
   }
 
   function renderTempSlots() {
@@ -683,7 +686,28 @@
       btn.appendChild(ph);
     }
 
-    btn.onclick = async () => {
+    btn.onclick = async (e) => {
+      if (btn._longPressed) { btn._longPressed = false; return; }
+
+      // Ctrl+Click to overwrite temp slot
+      if (e.ctrlKey) {
+        const info = getCurrentStationInfo();
+        if (!info.freq) return showToast('No frequency to save');
+        const item = {
+          freq: String(info.freq),
+          name: info.name || '',
+          antenna: info.antenna || '',
+          logo: info.logo || '',
+          itu: info.itu || '',
+          // Preserve existing picode if available, otherwise generate new
+          picode: getPiCode() || (tempSlots[si] && tempSlots[si].picode) || generateId()
+          picode: getPiCode() || generateId()
+        };
+        tempSlots[si] = item;
+        renderTempSlots();
+        return showToast(`Temp slot ${si + 1} overwritten with current: ${item.freq}`);
+      }
+
       if (tempSlots[si]) {
         const freq = parseFloat(tempSlots[si].freq);
         if (!isNaN(freq) && window.socket && socket.readyState === WebSocket.OPEN) {
@@ -960,6 +984,7 @@
           itu: info.itu || '',
           // Preserve existing picode if available, otherwise generate new
           picode: getPiCode() || (stations[idx] && stations[idx].picode) || generateId()
+          picode: getPiCode() || generateId()
         };
         stations[idx] = item;
         await persistStations();

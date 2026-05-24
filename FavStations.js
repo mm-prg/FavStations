@@ -1,7 +1,7 @@
 // Plugin configuration, this is used in the administration when plugins are loaded
 var pluginConfig = {
     name: 'FavStations',
-    version: '0.0.13',
+    version: '0.0.14',
     author: 'mm-prg',
     frontEndPath: 'FavStations/pluginFavStations.js'
 } 
