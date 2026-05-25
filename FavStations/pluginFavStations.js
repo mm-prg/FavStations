@@ -786,7 +786,7 @@
     container.style.flexWrap = 'wrap';
     container.style.gap = GAP + 'px';
     container.style.flexDirection = 'row';
-    container.style.justifyContent = 'space-between';
+    container.style.justifyContent = 'flex-start';
     container.style.alignItems = 'flex-start';
     container.style.width = '100%';
 
