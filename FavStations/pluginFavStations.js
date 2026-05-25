@@ -7,7 +7,7 @@
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.14';
+  const pluginVersion = '0.0.15';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -373,13 +373,13 @@
   function createBar() {
     if (document.getElementById(pluginId)) return;
     const dims = getButtonDims();
+    const wrapper = document.getElementById('wrapper');
 
     const bar = document.createElement('div');
     bar.id = pluginId;
-    // Position relative to flow at the bottom
+
     bar.style.marginTop = '16px';
-    bar.style.marginLeft = '8px';
-    bar.style.marginRight = '8px';
+    bar.style.boxSizing = 'border-box';
     bar.style.display = 'flex';
     bar.style.flexDirection = 'column';
     bar.style.gap = '8px';
@@ -590,7 +590,7 @@
     // Buttons row (station buttons) placed on its own line
     const buttonsRow = document.createElement('div');
     buttonsRow.style.display = 'flex';
-    buttonsRow.style.justifyContent = 'flex-start';
+    buttonsRow.style.justifyContent = 'stretch';
     buttonsRow.style.width = '100%';
     buttonsRow.style.overflowX = 'auto';
     const container = document.createElement('div');
@@ -602,7 +602,13 @@
     bar.appendChild(controlsRow);
     bar.appendChild(buttonsRow);
 
-    document.body.appendChild(bar);
+    if (wrapper) {
+      wrapper.appendChild(bar);
+    } else {
+      bar.style.marginLeft = '8px';
+      bar.style.marginRight = '8px';
+      document.body.appendChild(bar);
+    }
 
     renderTempSlots();
     renderButtons();
@@ -780,6 +786,7 @@
     container.style.flexWrap = 'wrap';
     container.style.gap = GAP + 'px';
     container.style.flexDirection = 'row';
+    container.style.justifyContent = 'space-between';
     container.style.alignItems = 'flex-start';
     container.style.width = '100%';
 
