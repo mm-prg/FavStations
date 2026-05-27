@@ -7,7 +7,7 @@
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.15';
+  const pluginVersion = '0.0.16';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -87,6 +87,7 @@
   let config = {
     remoteStationsUrl: defaultRemoteStationsUrl,
     showLogos: true,
+    showStationsMode: 'all',
     buttonSize: 'custom',
     customWidth: 120,
     customHeight: 60,
@@ -120,15 +121,17 @@
       console.warn('FavStations: Unable to load configuration from server.', e);
     }
 
-    // Load local storage overrides or fallbacks
+    // Load local storage overrides (personal/temporary settings for this browser)
+    // This allows even admins to have personal display preferences that differ from global defaults
     const localConfigRaw = localStorage.getItem(configKey);
-    if (localConfigRaw && (!isAdmin || !serverLoaded)) {
+    if (localConfigRaw) {
       config = { ...config, ...JSON.parse(localConfigRaw) };
       console.log('FavStations: Loaded configuration from local storage');
     }
 
     // Ensures showLogos is a boolean
     config.showLogos = !!config.showLogos;
+    if (!config.showStationsMode) config.showStationsMode = 'all';
 
     if (config.tempSlotCount === undefined) config.tempSlotCount = 8;
     tempSlots = new Array(config.tempSlotCount).fill(null);
@@ -204,6 +207,12 @@
   // Imports stations from a remote JSON link
   async function importFromRemote(silent = false) {
     let url = config.remoteStationsUrl || defaultRemoteStationsUrl; // Uses value from configuration, falls back to default
+
+    // If preloaded stations are restricted to admin and we are at startup (silent), skip for normal users
+    if (silent && config.showStationsMode === 'admin' && !isAdmin) {
+      return false;
+    }
+
     if (!silent) {
       const inputUrl = prompt('Enter Remote Stations JSON URL (Supports GitHub):', url);
       if (inputUrl === null) return false;
@@ -397,6 +406,7 @@
     menuBtn.style.width = dims.control.w + 'px';
     menuBtn.style.height = dims.control.h + 'px';
     menuBtn.style.padding = '0';
+    menuBtn.style.boxSizing = 'border-box';
     menuBtn.style.background = '#111';
     menuBtn.style.border = '1px solid #333';
     menuBtn.style.borderRadius = '4px';
@@ -439,6 +449,7 @@
     settingsBtn.style.width = dims.control.w + 'px';
     settingsBtn.style.height = dims.control.h + 'px';
     settingsBtn.style.padding = '0';
+    settingsBtn.style.boxSizing = 'border-box';
     settingsBtn.style.background = '#111';
     settingsBtn.style.border = '1px solid #333';
     settingsBtn.style.borderRadius = '4px';
@@ -516,7 +527,7 @@
       const adminBtn = document.createElement('button');
       adminBtn.textContent = '🛠️';
       adminBtn.id = 'favstations-admin-btn';
-      adminBtn.style.cssText = `width:${dims.control.w}px; height:${dims.control.h}px; padding:0; background:#111; border:1px solid #333; border-radius:4px; color:#fff; font-size:${dims.font}px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer;`;
+      adminBtn.style.cssText = `width:${dims.control.w}px; height:${dims.control.h}px; padding:0; background:#111; border:1px solid #333; border-radius:4px; color:#fff; font-size:${dims.font}px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; box-sizing:border-box;`;
       adminBtn.addEventListener('mouseenter', () => {
         showTip(adminBtn, 'Admin Options\nServer sync and startup settings.');
       });
@@ -542,7 +553,7 @@
     // List selector (shows all existing lists)
     const listSelect = document.createElement('select');
     listSelect.id = 'favstations-list-select';
-    listSelect.style.cssText = `padding: 0 8px; height: ${dims.control.h}px; background: #222; color: #fff; border: 1px solid #444; border-radius: 6px; font-size: ${Math.round(13 * (dims.control.h / 28))}px; outline: none; cursor: pointer; vertical-align: middle;`;
+    listSelect.style.cssText = `padding: 0 8px; height: ${dims.control.h}px; background: #222; color: #fff; border: 1px solid #444; border-radius: 6px; font-size: ${Math.round(13 * (dims.control.h / 28))}px; outline: none; cursor: pointer; vertical-align: middle; box-sizing:border-box;`;
     listSelect.addEventListener('mouseenter', () => showTip(listSelect, 'Select the active station list.'));
     listSelect.addEventListener('mouseleave', hideTip);
     listSelect.addEventListener('mousedown', hideTip);
@@ -566,7 +577,7 @@
 
     const clearTempBtn = document.createElement('button');
     clearTempBtn.textContent = '❌'; // Red cross icon
-    clearTempBtn.style.cssText = `width:${dims.control.w}px; height:${dims.control.h}px; padding:0; background:#111; border:1px solid #333; border-radius:4px; color:#FF0000; font-size:${dims.font}px; display:inline-flex; align-items:center; justify-content:center; margin-left:4px; cursor:pointer;`;
+    clearTempBtn.style.cssText = `width:${dims.control.w}px; height:${dims.control.h}px; padding:0; background:#111; border:1px solid #333; border-radius:4px; color:#FF0000; font-size:${dims.font}px; display:inline-flex; align-items:center; justify-content:center; margin-left:4px; cursor:pointer; box-sizing:border-box;`;
     clearTempBtn.onclick = () => {
       tempSlots = new Array(config.tempSlotCount).fill(null); renderTempSlots(); showToast('All slots cleared');
     };
@@ -633,6 +644,7 @@
     btn.style.background = '#111';
     btn.style.border = '1px solid #333';
     btn.style.color = '#fff';
+    btn.style.boxSizing = 'border-box';
     btn.style.width = dims.control.w + 'px';
     btn.style.height = dims.control.h + 'px';
     btn.style.overflow = 'hidden';
@@ -790,6 +802,14 @@
     container.style.alignItems = 'flex-start';
     container.style.width = '100%';
 
+    // Synchronize visibility of the main menu, list selector and settings with the stations visibility
+    const menuBtn = document.getElementById('favstations-menu-btn');
+    const listSelect = document.getElementById('favstations-list-select');
+    const settingsBtn = document.getElementById('favstations-settings-btn');
+    if (menuBtn) menuBtn.style.display = 'inline-flex';
+    if (listSelect) listSelect.style.display = 'inline-block';
+    if (settingsBtn) settingsBtn.style.display = 'inline-flex';
+
     stations.forEach((st, idx) => {
       container.appendChild(createStationButton(st, idx));
     });
@@ -807,6 +827,7 @@
       btn.style.border = '1px solid #333';
       btn.style.borderRadius = '4px';
       btn.style.color = '#fff';
+      btn.style.boxSizing = 'border-box';
       btn.style.width = dims.control.w + 'px';
       btn.style.height = dims.control.h + 'px';
       btn.style.padding = '0';
@@ -920,6 +941,7 @@
     btn.setAttribute('data-station-idx', idx);
     if (st.picode) btn.dataset.id = st.picode;
 
+    btn.style.boxSizing = 'border-box';
     // fixed, uniform size for all buttons
     btn.style.width = dims.station.w + 'px';
     btn.style.height = dims.station.h + 'px';
@@ -1118,19 +1140,23 @@
   // fetch list from server, fallback to localStorage (support multiple lists in localStorage)
   async function fetchList() {
     let serverLoaded = false;
-    try {
-      const res = await fetch('/plugins/FavStations/list');
-      if (res.ok) {
-        const serverLists = await res.json();
-        // Expect an object of lists from the server
-        if (serverLists && typeof serverLists === 'object' && !Array.isArray(serverLists) && Object.keys(serverLists).length > 0) {
-          listsObj = serverLists;
-          console.log('FavStations: Loaded station lists from server (/plugins/FavStations/list)');
-          serverLoaded = true;
+
+    // Only fetch from server if mode is 'all' or if user is admin
+    const canLoadServer = (config.showStationsMode === 'all') || isAdmin;
+
+    if (canLoadServer) {
+      try {
+        const res = await fetch('/plugins/FavStations/list');
+        if (res.ok) {
+          const serverLists = await res.json();
+          // Expect an object of lists from the server
+          if (serverLists && typeof serverLists === 'object' && !Array.isArray(serverLists) && Object.keys(serverLists).length > 0) {
+            listsObj = serverLists;
+            console.log('FavStations: Loaded station lists from server (/plugins/FavStations/list)');
+            serverLoaded = true;
+          }
         }
-      }
-    } catch (e) {
-      // ignore
+      } catch (e) { /* ignore */ }
     }
 
     // If not admin, or server failed, load/merge from local storage
@@ -1893,6 +1919,8 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
   function updateListSelect() {
     const sel = document.getElementById('favstations-list-select');
     if (!sel) return;
+    sel.style.display = 'inline-block';
+
     // clear
     sel.innerHTML = '';
     const names = Object.keys(listsObj || {});
@@ -1935,6 +1963,9 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
   function updateSelectWidth(sel) {
     if (!sel || sel.options.length === 0) return;
     
+    // If the selector is hidden, don't try to calculate width (would be 0)
+    if (sel.style.display === 'none') return;
+    
     const tempSpan = document.createElement('span');
     tempSpan.style.visibility = 'hidden';
     tempSpan.style.position = 'absolute';
@@ -1958,7 +1989,12 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
   }
 
   // Visual dimension editor
-  function openDimensionEditor(callbackOnSave = null) {
+  function openDimensionEditor(params = {}) {
+    // Support both direct callback (old way) or options object
+    const callbackOnSave = (typeof params === 'function') ? params : params.callbackOnSave;
+    const initialWidth = params.initialWidth;
+    const initialHeight = params.initialHeight;
+
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed; left:0; top:0; right:0; bottom:0; z-index:20000; background:rgba(0,0,0,0.85); display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; font-family:sans-serif; backdrop-filter:blur(4px);';
 
@@ -1968,6 +2004,8 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     overlay.appendChild(title);
 
     const dims = getButtonDims();
+    const startW = initialWidth || dims.station.w;
+    const startH = initialHeight || dims.station.h;
     
     // Resizable container
     const resizeContainer = document.createElement('div');
@@ -1976,14 +2014,14 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       background: rgba(255,255,255,0.1);
       overflow: hidden;
       resize: both;
-      width: ${dims.station.w}px;
-      height: ${dims.station.h}px;
+      width: ${startW}px;
+      height: ${startH}px;
       display: flex;
       align-items: center;
       justify-content: center;
       min-width: 40px;
       min-height: 24px;
-      box-sizing: content-box;
+      box-sizing: border-box;
     `;
 
     const sampleBtn = document.createElement('div');
@@ -1995,14 +2033,15 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     const info = document.createElement('div');
     info.style.marginTop = '15px';
     info.style.fontSize = '18px';
-    info.textContent = `${dims.station.w} x ${dims.station.h}`;
+    info.textContent = `${startW} x ${startH}`;
     overlay.appendChild(info);
 
     // Update info on resize using ResizeObserver for real-time feedback
     const ro = new ResizeObserver(entries => {
       for (let entry of entries) {
-        const w = Math.round(entry.contentRect.width);
-        const h = Math.round(entry.contentRect.height);
+        const rect = entry.target.getBoundingClientRect();
+        const w = Math.round(rect.width);
+        const h = Math.round(rect.height);
         info.textContent = `${w} x ${h}`;
       }
     });
@@ -2226,7 +2265,18 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
   }
 
   // Admin function to edit and save global configuration defaults
-  function openGlobalConfigEditor() {
+  async function openGlobalConfigEditor() {
+    let serverConfig = {};
+    try {
+      const res = await fetch('/plugins/FavStations/config');
+      if (res.ok) {
+        serverConfig = await res.json();
+      }
+    } catch (e) {
+      console.error('FavStations: Failed to fetch fresh config for editor', e);
+      serverConfig = { ...config }; // Fallback to runtime config if server is unreachable
+    }
+
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed; left:0; top:0; right:0; bottom:0; z-index:20002; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.6);';
 
@@ -2254,7 +2304,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     legend.style.fontWeight = 'bold';
     startupModeGroup.appendChild(legend);
 
-    let currentStartupMode = config.startupMode || 'server';
+    let currentStartupMode = serverConfig.startupMode || 'server';
     const modes = [
       { id: 'server', label: 'Server (Local JSON)' },
       { id: 'remote', label: 'Remote (URL/GitHub)' },
@@ -2275,7 +2325,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
 
     const remoteInput = document.createElement('input');
     remoteInput.type = 'text';
-    remoteInput.value = config.remoteStationsUrl || '';
+    remoteInput.value = serverConfig.remoteStationsUrl || '';
     remoteInput.style.width = '100%';
     remoteInput.style.padding = '6px';
     remoteInput.style.boxSizing = 'border-box';
@@ -2314,7 +2364,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     showLogosLabel.style.cursor = 'pointer';
     const showLogosCheckbox = document.createElement('input');
     showLogosCheckbox.type = 'checkbox';
-    showLogosCheckbox.checked = config.showLogos;
+    showLogosCheckbox.checked = serverConfig.showLogos !== false;
     showLogosLabel.appendChild(showLogosCheckbox);
     showLogosLabel.appendChild(document.createTextNode('Show Station Logos'));
     form.appendChild(showLogosLabel);
@@ -2329,12 +2379,42 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     tempSlotInput.type = 'number';
     tempSlotInput.min = '1';
     tempSlotInput.max = '30';
-    tempSlotInput.value = config.tempSlotCount;
+    tempSlotInput.value = serverConfig.tempSlotCount || 8;
     tempSlotInput.style.padding = '6px';
     tempSlotInput.style.boxSizing = 'border-box';
     tempSlotInput.style.width = '100px'; // Make it smaller
     tempSlotLabel.appendChild(tempSlotInput);
     form.appendChild(tempSlotLabel);
+
+    // --- Show Stations Mode Selector ---
+    const modeLabel = document.createElement('label');
+    modeLabel.textContent = 'Preloaded Stations Visibility:';
+    modeLabel.style.display = (currentStartupMode === 'empty' ? 'none' : 'flex');
+    modeLabel.style.flexDirection = 'column';
+    modeLabel.style.gap = '4px';
+    const modeSelect = document.createElement('select');
+    modeSelect.style.padding = '6px';
+    [
+      { val: 'all', text: 'Show for all users' },
+      { val: 'admin', text: 'Show only for Administrator' }
+    ].forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.val;
+      opt.textContent = m.text;
+      if ((serverConfig.showStationsMode || 'all') === m.val) opt.selected = true;
+      modeSelect.appendChild(opt);
+    });
+    modeLabel.appendChild(modeSelect);
+    form.appendChild(modeLabel);
+
+    // Add listener to radios to toggle the mode label
+    form.querySelectorAll('input[name="fs-global-startup-mode"]').forEach(radio => {
+      const oldHandler = radio.onchange;
+      radio.onchange = () => {
+        oldHandler();
+        modeLabel.style.display = (currentStartupMode === 'empty' ? 'none' : 'flex');
+      };
+    });
 
     // --- Button Dimensions ---
     const dimsLabel = document.createElement('label');
@@ -2351,14 +2431,14 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     const widthInput = document.createElement('input');
     widthInput.type = 'number';
     widthInput.min = '40';
-    widthInput.value = config.customWidth || 72;
+    widthInput.value = serverConfig.customWidth || 72;
     widthInput.style.padding = '6px';
     widthInput.style.width = '80px';
 
     const heightInput = document.createElement('input');
     heightInput.type = 'number';
     heightInput.min = '24';
-    heightInput.value = config.customHeight || 44;
+    heightInput.value = serverConfig.customHeight || 44;
     heightInput.style.padding = '6px';
     heightInput.style.width = '80px';
 
@@ -2385,12 +2465,16 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       // Hide this modal temporarily
       overlay.style.display = 'none';
 
-      openDimensionEditor((newWidth, newHeight) => {
-        // Callback from openDimensionEditor
-        widthInput.value = newWidth;
-        heightInput.value = newHeight;
-        // Show this modal again
-        overlay.style.display = 'flex';
+      openDimensionEditor({
+        initialWidth: parseInt(widthInput.value, 10),
+        initialHeight: parseInt(heightInput.value, 10),
+        callbackOnSave: (newWidth, newHeight) => {
+          // Callback from openDimensionEditor
+          widthInput.value = newWidth;
+          heightInput.value = newHeight;
+          // Show this modal again
+          overlay.style.display = 'flex';
+        }
       });
     };
     dimsRow.appendChild(visualEditorBtn); // Add the new button
@@ -2448,6 +2532,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
         config.remoteStationsUrl = defaultRemoteStationsUrl;
       }
       config.showLogos = showLogosCheckbox.checked;
+      config.showStationsMode = modeSelect.value;
       const newTempSlotCount = parseInt(tempSlotInput.value, 10);
       if (!isNaN(newTempSlotCount) && newTempSlotCount >= 1 && newTempSlotCount <= 30) {
         config.tempSlotCount = newTempSlotCount;
@@ -2463,6 +2548,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
 
       // Now persist this updated config to the server
       await persistConfigToServer();
+      await persistConfig(); // Also update local storage to sync the current browser session
       overlay.remove();
       // Re-render the bar to reflect potential changes (e.g., temp slot count)
       const oldBar = document.getElementById(pluginId);

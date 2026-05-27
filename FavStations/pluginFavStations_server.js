@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * FavStations Plugin for FM-DX Webserver (v0.0.15)
+ * FavStations Plugin for FM-DX Webserver (v0.0.16)
  * ************************************************
  */
 
@@ -32,6 +32,7 @@ function loadConfig() {
       const defaultConfig = {
         remoteStationsUrl: '',
         showLogos: true,
+        showStationsMode: 'all',
         tempSlotCount: 8,
         buttonSize: 'custom',
         customWidth: 120,
