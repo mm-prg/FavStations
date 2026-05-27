@@ -7,7 +7,7 @@
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.16';
+  const pluginVersion = '0.0.18';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -399,49 +399,6 @@
     bar.style.background = 'rgba(0,0,0,0.45)';
     bar.style.overflowX = 'auto';
 
-    // Main Menu (at the start of the row)
-    const menuBtn = document.createElement('button');
-    menuBtn.textContent = '☰';
-    menuBtn.id = 'favstations-menu-btn';
-    menuBtn.style.width = dims.control.w + 'px';
-    menuBtn.style.height = dims.control.h + 'px';
-    menuBtn.style.padding = '0';
-    menuBtn.style.boxSizing = 'border-box';
-    menuBtn.style.background = '#111';
-    menuBtn.style.border = '1px solid #333';
-    menuBtn.style.borderRadius = '4px';
-    menuBtn.style.color = '#fff';
-    menuBtn.style.fontSize = dims.font + 'px';
-    menuBtn.style.display = 'inline-flex';
-    menuBtn.style.alignItems = 'center';
-    menuBtn.style.justifyContent = 'center';
-
-    menuBtn.addEventListener('mouseenter', () => {
-      let tooltipText = `Main Menu (v${pluginVersion})\nManage, Import, and Export your station lists.`;
-      showTip(menuBtn, tooltipText);
-    });
-    menuBtn.addEventListener('mouseleave', hideTip);
-    menuBtn.addEventListener('mousedown', hideTip);
-
-    menuBtn.onclick = (e) => {
-      e.stopPropagation();
-      hideTip();
-      const prev = document.getElementById('favstations-context-menu');
-      if (prev) {
-        prev.remove();
-        return;
-      }
-      const rect = menuBtn.getBoundingClientRect();
-      const menuItems = [
-        { label: 'Manage Lists', tooltip: 'Organize your collections: rename, delete, or change the order of lists.', action: openManager },
-        { label: 'Import Lists (JSON)', tooltip: 'Load a JSON file containing station collections from your computer.', action: importStations },
-        { label: 'Export Lists (JSON)', tooltip: 'Save all your current collections to a JSON file for backup.', action: exportStations },
-      ];
-      showStationContextMenu(rect.left, rect.bottom + 5, {
-        items: menuItems
-      });
-    };
-
     // Settings Button (next to Menu)
     const settingsBtn = document.createElement('button');
     settingsBtn.textContent = '⚙️';
@@ -463,8 +420,8 @@
     settingsBtn.addEventListener('mouseleave', hideTip);
     settingsBtn.addEventListener('mousedown', hideTip);
 
-    settingsBtn.onclick = (e) => {
-      e.stopPropagation();
+    settingsBtn.onclick = (ev) => {
+      ev.stopPropagation();
       hideTip();
       const prev = document.getElementById('favstations-context-menu');
       if (prev) {
@@ -472,55 +429,24 @@
         return;
       }
       const rect = settingsBtn.getBoundingClientRect();
-      const settingsMenuItems = [
-        { label: 'Buttons size', tooltip: 'Adjust the width and height of station buttons.', action: openDimensionEditor },
+      const items = [
+        { label: 'Manage Lists', tooltip: 'Organize your collections: rename, delete, or change the order of lists.', action: openManager },
+        { label: 'Edit Settings', tooltip: 'Adjust button dimensions, slot count, and icon visibility.', action: () => openSettingsEditor(false) },
         {
-          label: 'Number of temp slots',
-          tooltip: 'Set how many temporary memory slots are visible (1-30).',
-          action: async () => {
-            const val = prompt('Enter the number of temporary slots (1-30):', config.tempSlotCount);
-            if (val === null) return;
-            const n = parseInt(val, 10);
-            if (isNaN(n) || n < 1 || n > 30) return alert('Invalid number. Please enter a value between 1 and 30.');
-            
-            config.tempSlotCount = n;
-            const oldSlots = tempSlots;
-            tempSlots = new Array(n).fill(null);
-            for (let i = 0; i < Math.min(oldSlots.length, n); i++) {
-              tempSlots[i] = oldSlots[i];
-            }
-            
-            await persistConfig();
-            renderTempSlots();
-          }
-        },
-        {
-          label: config.showLogos ? 'Hide station icons' : 'Show station icons',
-          tooltip: 'Switch between showing station logos or frequency text.',
-          action: async () => {
-            config.showLogos = !config.showLogos;
-            await persistConfig();
-            renderButtons();
-            renderTempSlots();
-            updateListSelect();
-          }
-      },
-      {
-        label: '?',
-        tooltip: 'Visit the GitHub repository for help and documentation.',
-        action: () => window.open('https://github.com/mm-prg/FavStations', '_blank')
+          label: 'Help (?)',
+          tooltip: 'Visit the GitHub repository for documentation and help.',
+          action: () => window.open('https://github.com/mm-prg/FavStations', '_blank')
         }
       ];
       showStationContextMenu(rect.left, rect.bottom + 5, {
-        items: settingsMenuItems
+        items: items
       });
     };
 
     // Controls row (manage, save current, list select)
     const controlsRow = document.createElement('div');
     controlsRow.style.cssText = 'display:flex; gap:8px; align-items:center; flex-wrap:wrap;';
-    controlsRow.appendChild(settingsBtn); // Ora l'ingranaggio è il primo
-    controlsRow.appendChild(menuBtn); // Ora il menu è il secondo
+    controlsRow.appendChild(settingsBtn);
 
     // Admin Options Button (Admin only)
     if (isAdmin) {
@@ -543,7 +469,7 @@
         const rect = adminBtn.getBoundingClientRect();
         const items = [
           { label: 'Save Lists to Server', tooltip: "Save all current lists permanently to the server's data file.", action: persistStations },
-          { label: 'Edit default options', tooltip: 'Review and save current layout and startup settings as the new default for everyone.', action: openGlobalConfigEditor }
+          { label: 'Edit default options', tooltip: 'Review and save current layout and startup settings as the new default for everyone.', action: () => openSettingsEditor(true) }
         ];
         showStationContextMenu(rect.left, rect.bottom + 5, { items });
       };
@@ -803,10 +729,8 @@
     container.style.width = '100%';
 
     // Synchronize visibility of the main menu, list selector and settings with the stations visibility
-    const menuBtn = document.getElementById('favstations-menu-btn');
     const listSelect = document.getElementById('favstations-list-select');
     const settingsBtn = document.getElementById('favstations-settings-btn');
-    if (menuBtn) menuBtn.style.display = 'inline-flex';
     if (listSelect) listSelect.style.display = 'inline-block';
     if (settingsBtn) settingsBtn.style.display = 'inline-flex';
 
@@ -1259,6 +1183,72 @@
     title.textContent = 'Manage Lists';
     box.appendChild(title);
 
+    // Action buttons for Quick Management
+    const actionsBar = document.createElement('div');
+    actionsBar.style.cssText = 'display:flex; gap:10px; margin-bottom:20px; padding-bottom:12px; border-bottom:1px solid #eee;';
+
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '➕ Add New List';
+    addBtn.style.padding = '6px 12px';
+    addBtn.onclick = () => {
+      let name = prompt('Enter a name for the new list:', `List ${new Date().toISOString().slice(0,10)}`);
+      if (name === null) return;
+      createNewList(name);
+      renderListManager(); // Refresh this panel
+    };
+
+    const importBtn = document.createElement('button');
+    importBtn.textContent = '📥 Import (JSON)';
+    importBtn.style.padding = '6px 12px';
+    importBtn.onclick = () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json,application/json';
+      input.onchange = async (ev) => {
+        const file = ev.target.files && ev.target.files[0];
+        if (!file) return;
+        try {
+          const txt = await file.text();
+          const parsed = JSON.parse(txt);
+          if (Array.isArray(parsed)) {
+            const sane = parsed.map(item => ({ freq: item.freq ? String(item.freq) : '', name: item.name || '', antenna: item.antenna || '', logo: item.logo || '', itu: item.itu || '', picode: item.picode || generateId() }));
+            stations = sane; listsObj[currentListName] = stations;
+          } else if (parsed && typeof parsed === 'object') {
+            for (const [k, v] of Object.entries(parsed)) {
+              if (Array.isArray(v)) listsObj[k] = v.map(item => ({ freq: item && item.freq ? String(item.freq) : '', name: item && item.name ? item.name : '', antenna: item && item.antenna ? item.antenna : '', logo: item && item.logo ? item.logo : '', itu: item && item.itu ? item.itu : '', picode: item && item.picode ? item.picode : generateId() }));
+            }
+            if (Object.keys(listsObj).length > 0 && !listsObj[currentListName]) currentListName = Object.keys(listsObj)[0];
+            stations = listsObj[currentListName] || [];
+          }
+          await persistStations();
+          renderButtons();
+          updateListSelect();
+          renderListManager(); // Refresh the manager view
+          showToast(`Imported ${file.name}`);
+        } catch (e) { alert('Import failed: ' + e.message); }
+      };
+      input.click();
+    };
+
+    const exportBtn = document.createElement('button');
+    exportBtn.textContent = '📤 Export (JSON)';
+    exportBtn.style.padding = '6px 12px';
+    exportBtn.onclick = () => exportStations();
+
+    actionsBar.appendChild(addBtn);
+    actionsBar.appendChild(importBtn);
+    actionsBar.appendChild(exportBtn);
+
+    if (isAdmin) {
+      const serverSaveBtn = document.createElement('button');
+      serverSaveBtn.textContent = '💾 Save to Server';
+      serverSaveBtn.style.padding = '6px 12px';
+      serverSaveBtn.onclick = () => persistStations();
+      actionsBar.appendChild(serverSaveBtn);
+    }
+
+    box.appendChild(actionsBar);
+
     const listDiv = document.createElement('div');
     listDiv.style.display = 'flex';
     listDiv.style.flexDirection = 'column';
@@ -1385,11 +1375,22 @@
     renderListManager();
     box.appendChild(listDiv);
 
+    const footer = document.createElement('div');
+    footer.style.cssText = 'display:flex; justify-content:flex-end; gap:10px; margin-top:16px;';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.padding = '6px 16px';
+    cancelBtn.onclick = () => overlay.remove();
+    footer.appendChild(cancelBtn);
+
     const closeBtn = document.createElement('button');
     closeBtn.textContent = 'Close';
-    closeBtn.style.marginTop = '12px';
+    closeBtn.style.padding = '6px 16px';
     closeBtn.onclick = () => overlay.remove();
-    box.appendChild(closeBtn);
+    footer.appendChild(closeBtn);
+
+    box.appendChild(footer);
 
     overlay.appendChild(box);
     document.body.appendChild(overlay);
@@ -2264,17 +2265,21 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     document.body.appendChild(overlay);
   }
 
-  // Admin function to edit and save global configuration defaults
-  async function openGlobalConfigEditor() {
-    let serverConfig = {};
-    try {
-      const res = await fetch('/plugins/FavStations/config');
-      if (res.ok) {
-        serverConfig = await res.json();
+  // Unified Settings Editor for both local and global configuration
+  async function openSettingsEditor(isGlobal = false) {
+    let baseConfig = {};
+    if (isGlobal) {
+      try {
+        const res = await fetch('/plugins/FavStations/config');
+        if (res.ok) {
+          baseConfig = await res.json();
+        }
+      } catch (e) {
+        console.error('FavStations: Failed to fetch fresh config for editor', e);
+        baseConfig = { ...config };
       }
-    } catch (e) {
-      console.error('FavStations: Failed to fetch fresh config for editor', e);
-      serverConfig = { ...config }; // Fallback to runtime config if server is unreachable
+    } else {
+      baseConfig = { ...config };
     }
 
     const overlay = document.createElement('div');
@@ -2284,7 +2289,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     box.style.cssText = 'width:480px; max-width:96%; padding:20px; border-radius:8px; background:#fff; color:#000; font-family:sans-serif; display:flex; flex-direction:column; gap:16px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
 
     const title = document.createElement('h3');
-    title.textContent = 'Edit Global Default Configuration';
+    title.textContent = isGlobal ? 'Edit Global Default Configuration' : 'Local Settings & Preferences';
     title.style.margin = '0';
     box.appendChild(title);
 
@@ -2294,80 +2299,86 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     form.style.gap = '12px';
 
     // --- Startup Mode ---
-    const startupModeGroup = document.createElement('fieldset');
-    startupModeGroup.style.border = '1px solid #ccc';
-    startupModeGroup.style.borderRadius = '4px';
-    startupModeGroup.style.padding = '10px';
-    startupModeGroup.style.margin = '0';
-    const legend = document.createElement('legend');
-    legend.textContent = 'Startup Loading Mode';
-    legend.style.fontWeight = 'bold';
-    startupModeGroup.appendChild(legend);
+    let currentStartupMode = baseConfig.startupMode || 'server';
+    let remoteInput;
+    if (isGlobal || isAdmin) {
+      const startupModeGroup = document.createElement('fieldset');
+      startupModeGroup.style.border = '1px solid #ccc';
+      startupModeGroup.style.borderRadius = '4px';
+      startupModeGroup.style.padding = '10px';
+      startupModeGroup.style.margin = '0';
+      const legend = document.createElement('legend');
+      legend.textContent = 'Startup Loading Mode';
+      legend.style.fontWeight = 'bold';
+      startupModeGroup.appendChild(legend);
 
-    let currentStartupMode = serverConfig.startupMode || 'server';
-    const modes = [
-      { id: 'server', label: 'Server (Local JSON)' },
-      { id: 'remote', label: 'Remote (URL/GitHub)' },
-      { id: 'empty', label: 'Empty list' }
-    ];
+      const modes = [
+        { id: 'server', label: 'Server (Local JSON)' },
+        { id: 'remote', label: 'Remote (URL/GitHub)' },
+        { id: 'empty', label: 'Empty list' }
+      ];
 
-    const remoteContainer = document.createElement('div');
-    remoteContainer.style.display = (currentStartupMode === 'remote' ? 'block' : 'none');
-    remoteContainer.style.marginTop = '4px';
-    remoteContainer.style.paddingLeft = '24px';
+      const remoteContainer = document.createElement('div');
+      remoteContainer.style.display = (currentStartupMode === 'remote' ? 'block' : 'none');
+      remoteContainer.style.marginTop = '4px';
+      remoteContainer.style.paddingLeft = '24px';
 
-    const remoteLabel = document.createElement('div');
-    remoteLabel.textContent = 'Remote Stations JSON URL:';
-    remoteLabel.style.fontSize = '12px';
-    remoteLabel.style.marginBottom = '4px';
-    remoteLabel.style.color = '#555';
-    remoteContainer.appendChild(remoteLabel);
+      const remoteLabel = document.createElement('div');
+      remoteLabel.textContent = 'Remote Stations JSON URL:';
+      remoteLabel.style.fontSize = '12px';
+      remoteLabel.style.marginBottom = '4px';
+      remoteLabel.style.color = '#555';
+      remoteContainer.appendChild(remoteLabel);
 
-    const remoteInput = document.createElement('input');
-    remoteInput.type = 'text';
-    remoteInput.value = serverConfig.remoteStationsUrl || '';
-    remoteInput.style.width = '100%';
-    remoteInput.style.padding = '6px';
-    remoteInput.style.boxSizing = 'border-box';
-    remoteInput.placeholder = 'https://...';
-    remoteContainer.appendChild(remoteInput);
+      remoteInput = document.createElement('input');
+      remoteInput.type = 'text';
+      remoteInput.value = baseConfig.remoteStationsUrl || '';
+      remoteInput.style.width = '100%';
+      remoteInput.style.padding = '6px';
+      remoteInput.style.boxSizing = 'border-box';
+      remoteInput.placeholder = 'https://...';
+      remoteContainer.appendChild(remoteInput);
 
-    modes.forEach(m => {
-      const label = document.createElement('label');
-      label.style.display = 'flex';
-      label.style.alignItems = 'center';
-      label.style.gap = '8px';
-      label.style.cursor = 'pointer';
-      label.style.fontSize = '14px';
+      modes.forEach(m => {
+        const label = document.createElement('label');
+        label.style.display = 'flex';
+        label.style.alignItems = 'center';
+        label.style.gap = '8px';
+        label.style.cursor = 'pointer';
+        label.style.fontSize = '14px';
 
-      const rb = document.createElement('input');
-      rb.type = 'radio';
-      rb.name = 'fs-global-startup-mode';
-      rb.value = m.id;
-      rb.checked = (currentStartupMode === m.id);
-      rb.onchange = () => {
-        currentStartupMode = m.id;
-        remoteContainer.style.display = (currentStartupMode === 'remote' ? 'block' : 'none');
-      };
-      label.appendChild(rb);
-      label.appendChild(document.createTextNode(m.label));
-      startupModeGroup.appendChild(label);
-    });
-    startupModeGroup.appendChild(remoteContainer);
-    form.appendChild(startupModeGroup);
+        const rb = document.createElement('input');
+        rb.type = 'radio';
+        rb.name = 'fs-global-startup-mode';
+        rb.value = m.id;
+        rb.checked = (currentStartupMode === m.id);
+        rb.onchange = () => {
+          currentStartupMode = m.id;
+          remoteContainer.style.display = (currentStartupMode === 'remote' ? 'block' : 'none');
+        };
+        label.appendChild(rb);
+        label.appendChild(document.createTextNode(m.label));
+        startupModeGroup.appendChild(label);
+      });
+      startupModeGroup.appendChild(remoteContainer);
+      form.appendChild(startupModeGroup);
+    }
 
     // --- Show Logos ---
-    const showLogosLabel = document.createElement('label');
-    showLogosLabel.style.display = 'flex';
-    showLogosLabel.style.alignItems = 'center';
-    showLogosLabel.style.gap = '8px';
-    showLogosLabel.style.cursor = 'pointer';
-    const showLogosCheckbox = document.createElement('input');
-    showLogosCheckbox.type = 'checkbox';
-    showLogosCheckbox.checked = serverConfig.showLogos !== false;
-    showLogosLabel.appendChild(showLogosCheckbox);
-    showLogosLabel.appendChild(document.createTextNode('Show Station Logos'));
-    form.appendChild(showLogosLabel);
+    let showLogosCheckbox;
+    if (isGlobal || isAdmin) {
+      const showLogosLabel = document.createElement('label');
+      showLogosLabel.style.display = 'flex';
+      showLogosLabel.style.alignItems = 'center';
+      showLogosLabel.style.gap = '8px';
+      showLogosLabel.style.cursor = 'pointer';
+      showLogosCheckbox = document.createElement('input');
+      showLogosCheckbox.type = 'checkbox';
+      showLogosCheckbox.checked = baseConfig.showLogos !== false;
+      showLogosLabel.appendChild(showLogosCheckbox);
+      showLogosLabel.appendChild(document.createTextNode('Show Station Logos'));
+      form.appendChild(showLogosLabel);
+    }
 
     // --- Temp Slot Count ---
     const tempSlotLabel = document.createElement('label');
@@ -2379,7 +2390,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     tempSlotInput.type = 'number';
     tempSlotInput.min = '1';
     tempSlotInput.max = '30';
-    tempSlotInput.value = serverConfig.tempSlotCount || 8;
+    tempSlotInput.value = baseConfig.tempSlotCount || 8;
     tempSlotInput.style.padding = '6px';
     tempSlotInput.style.boxSizing = 'border-box';
     tempSlotInput.style.width = '100px'; // Make it smaller
@@ -2387,34 +2398,37 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     form.appendChild(tempSlotLabel);
 
     // --- Show Stations Mode Selector ---
-    const modeLabel = document.createElement('label');
-    modeLabel.textContent = 'Preloaded Stations Visibility:';
-    modeLabel.style.display = (currentStartupMode === 'empty' ? 'none' : 'flex');
-    modeLabel.style.flexDirection = 'column';
-    modeLabel.style.gap = '4px';
-    const modeSelect = document.createElement('select');
-    modeSelect.style.padding = '6px';
-    [
-      { val: 'all', text: 'Show for all users' },
-      { val: 'admin', text: 'Show only for Administrator' }
-    ].forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m.val;
-      opt.textContent = m.text;
-      if ((serverConfig.showStationsMode || 'all') === m.val) opt.selected = true;
-      modeSelect.appendChild(opt);
-    });
-    modeLabel.appendChild(modeSelect);
-    form.appendChild(modeLabel);
+    let modeSelect;
+    if (isGlobal) {
+      const modeLabel = document.createElement('label');
+      modeLabel.textContent = 'Preloaded Stations Visibility:';
+      modeLabel.style.display = (currentStartupMode === 'empty' ? 'none' : 'flex');
+      modeLabel.style.flexDirection = 'column';
+      modeLabel.style.gap = '4px';
+      modeSelect = document.createElement('select');
+      modeSelect.style.padding = '6px';
+      [
+        { val: 'all', text: 'Show for all users' },
+        { val: 'admin', text: 'Show only for Administrator' }
+      ].forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.val;
+        opt.textContent = m.text;
+        if ((baseConfig.showStationsMode || 'all') === m.val) opt.selected = true;
+        modeSelect.appendChild(opt);
+      });
+      modeLabel.appendChild(modeSelect);
+      form.appendChild(modeLabel);
 
-    // Add listener to radios to toggle the mode label
-    form.querySelectorAll('input[name="fs-global-startup-mode"]').forEach(radio => {
-      const oldHandler = radio.onchange;
-      radio.onchange = () => {
-        oldHandler();
-        modeLabel.style.display = (currentStartupMode === 'empty' ? 'none' : 'flex');
-      };
-    });
+      // Add listener to radios to toggle the mode label
+      form.querySelectorAll('input[name="fs-global-startup-mode"]').forEach(radio => {
+        const oldHandler = radio.onchange;
+        radio.onchange = () => {
+          oldHandler();
+          modeLabel.style.display = (currentStartupMode === 'empty' ? 'none' : 'flex');
+        };
+      });
+    }
 
     // --- Button Dimensions ---
     const dimsLabel = document.createElement('label');
@@ -2431,14 +2445,14 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     const widthInput = document.createElement('input');
     widthInput.type = 'number';
     widthInput.min = '40';
-    widthInput.value = serverConfig.customWidth || 72;
+    widthInput.value = baseConfig.customWidth || 72;
     widthInput.style.padding = '6px';
     widthInput.style.width = '80px';
 
     const heightInput = document.createElement('input');
     heightInput.type = 'number';
     heightInput.min = '24';
-    heightInput.value = serverConfig.customHeight || 44;
+    heightInput.value = baseConfig.customHeight || 44;
     heightInput.style.padding = '6px';
     heightInput.style.width = '80px';
 
@@ -2480,59 +2494,80 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     dimsRow.appendChild(visualEditorBtn); // Add the new button
     form.appendChild(dimsLabel);
 
+    // Help link for everyone
+    const helpLink = document.createElement('a');
+    helpLink.href = 'https://github.com/mm-prg/FavStations';
+    helpLink.target = '_blank';
+    helpLink.textContent = 'Documentation & Help (?)';
+    helpLink.style.cssText = 'font-size: 12px; color: #007bff; text-decoration: none; align-self: flex-start;';
+    form.appendChild(helpLink);
+
     box.appendChild(form);
 
     const actions = document.createElement('div');
     actions.style.display = 'flex';
     actions.style.gap = '10px';
-    actions.style.justifyContent = 'flex-end';
+    actions.style.justifyContent = 'space-between';
+    actions.style.alignItems = 'center';
+    
+    const leftActions = document.createElement('div');
+    leftActions.style.display = 'flex';
+    leftActions.style.gap = '10px';
+
+    const rightActions = document.createElement('div');
+    rightActions.style.display = 'flex';
+    rightActions.style.gap = '10px';
 
     const saveBtn = document.createElement('button');
     saveBtn.textContent = 'Save';
     saveBtn.style.padding = '6px 16px';
     saveBtn.onclick = async () => {
       // Update global config object with values from the modal
-      config.startupMode = currentStartupMode;
-      if (currentStartupMode === 'remote') {
-        let url = remoteInput.value.trim();
-        if (url.includes('github.com') && !url.includes('gist.github.com')) {
-          url = url.replace('github.com', 'raw.githubusercontent.com')
-                   .replace(/\/(blob|raw)\//, '/');
-        }
-
-        // Validate the URL format
-        try {
-          new URL(url);
-        } catch (e) {
-          showToast('Invalid Remote Stations URL format.');
-          return; // Prevent saving if URL is invalid
-        }
-
-        // Validate if the remote URL is reachable and returns valid data before saving
-        showToast('Checking remote URL...');
-        try {
-          const testRes = await fetch('/plugins/FavStations/fetch-remote', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url })
-          });
-          const testData = await testRes.json();
-          if (!testData || !testData.ok) {
-            alert(`Remote validation failed: ${testData.error || 'Resource not found or invalid JSON'}`);
-            return; // Prevent saving if the URL returns 404 or other errors
+      if (isGlobal || isAdmin) {
+        config.startupMode = currentStartupMode;
+        if (currentStartupMode === 'remote' && remoteInput) {
+          let url = remoteInput.value.trim();
+          if (url.includes('github.com') && !url.includes('gist.github.com')) {
+            url = url.replace('github.com', 'raw.githubusercontent.com')
+                     .replace(/\/(blob|raw)\//, '/');
           }
-        } catch (err) {
-          alert(`Could not validate remote URL: ${err.message}`);
-          return;
-        }
 
-        config.remoteStationsUrl = url;
-      } else {
-        // If not remote, ensure remoteStationsUrl is cleared or set to default
-        config.remoteStationsUrl = defaultRemoteStationsUrl;
+          // Validate the URL format
+          try {
+            new URL(url);
+          } catch (e) {
+            showToast('Invalid Remote Stations URL format.');
+            return; // Prevent saving if URL is invalid
+          }
+
+          // Validate if the remote URL is reachable and returns valid data before saving
+          showToast('Checking remote URL...');
+          try {
+            const testRes = await fetch('/plugins/FavStations/fetch-remote', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url })
+            });
+            const testData = await testRes.json();
+            if (!testData || !testData.ok) {
+              alert(`Remote validation failed: ${testData.error || 'Resource not found or invalid JSON'}`);
+              return; // Prevent saving if the URL returns 404 or other errors
+            }
+          } catch (err) {
+            alert(`Could not validate remote URL: ${err.message}`);
+            return;
+          }
+
+          config.remoteStationsUrl = url;
+        } else if (currentStartupMode !== 'remote') {
+          // If not remote, ensure remoteStationsUrl is cleared or set to default
+          config.remoteStationsUrl = defaultRemoteStationsUrl;
+        }
+        if (showLogosCheckbox) config.showLogos = showLogosCheckbox.checked;
       }
-      config.showLogos = showLogosCheckbox.checked;
-      config.showStationsMode = modeSelect.value;
+
+      if (isGlobal && modeSelect) config.showStationsMode = modeSelect.value;
+
       const newTempSlotCount = parseInt(tempSlotInput.value, 10);
       if (!isNaN(newTempSlotCount) && newTempSlotCount >= 1 && newTempSlotCount <= 30) {
         config.tempSlotCount = newTempSlotCount;
@@ -2546,11 +2581,20 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       config.customHeight = parseInt(heightInput.value, 10) || 44;
       config.buttonSize = 'custom';
 
-      // Now persist this updated config to the server
-      await persistConfigToServer();
-      await persistConfig(); // Also update local storage to sync the current browser session
+      if (isGlobal) {
+        // Persist to server and local
+        await persistConfigToServer();
+        await persistConfig();
+      } else {
+        // Persist only locally
+        await persistConfig();
+      }
+
       overlay.remove();
-      // Re-render the bar to reflect potential changes (e.g., temp slot count)
+      
+      // Update temporary slots if count changed
+      tempSlots = new Array(config.tempSlotCount).fill(null);
+
       const oldBar = document.getElementById(pluginId);
       if (oldBar) oldBar.remove();
       createBar();
@@ -2562,8 +2606,10 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     cancelBtn.style.padding = '6px 16px';
     cancelBtn.onclick = () => overlay.remove();
 
-    actions.appendChild(cancelBtn);
-    actions.appendChild(saveBtn);
+    rightActions.appendChild(cancelBtn);
+    rightActions.appendChild(saveBtn);
+    actions.appendChild(leftActions);
+    actions.appendChild(rightActions);
     box.appendChild(actions);
 
     overlay.appendChild(box);
