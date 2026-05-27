@@ -3,13 +3,11 @@
  * FavStations Plugin for FM-DX Webserver
  * ************************************************
  */
-// modifica di prova di check-menu
-// test per vedere il merge
 
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.19';
+  const pluginVersion = '0.0.20';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -418,7 +416,7 @@
     settingsBtn.style.alignItems = 'center';
     settingsBtn.style.justifyContent = 'center';
 
-    settingsBtn.addEventListener('mouseenter', () => showTip(settingsBtn, 'Display Settings\nResize buttons, change slot count, or toggle icons.'));
+    settingsBtn.addEventListener('mouseenter', () => showTip(settingsBtn, 'Settings Menu:\nManage your station lists, customize button sizes, and configure server sync.'));
     settingsBtn.addEventListener('mouseleave', hideTip);
     settingsBtn.addEventListener('mousedown', hideTip);
 
@@ -431,15 +429,20 @@
         return;
       }
       const rect = settingsBtn.getBoundingClientRect();
-      const items = [
-        { label: 'Manage Lists', tooltip: 'Organize your collections: rename, delete, or change the order of lists.', action: openManager },
-        { label: 'Edit Settings', tooltip: 'Adjust button dimensions, slot count, and icon visibility.', action: () => openSettingsEditor(false) },
+      let items = [
+        { label: 'Manage Lists', tooltip: 'Add, rename, delete, or reorder your station collections. Also handles Import/Export.', action: openManager },
         {
-          label: 'Help (?)',
-          tooltip: 'Visit the GitHub repository for documentation and help.',
+          label: 'Edit Settings',
+          tooltip: isAdmin ? 'Global Admin Settings: Define startup behavior and layout for all users.' : 'Personal Settings: Customize button dimensions and local preferences.',
+          action: () => openSettingsEditor(true)
+        },
+        {
+          label: '?',
+          tooltip: 'Open the project documentation and support page on GitHub.',
           action: () => window.open('https://github.com/mm-prg/FavStations', '_blank')
         }
       ];
+
       showStationContextMenu(rect.left, rect.bottom + 5, {
         items: items
       });
@@ -450,39 +453,11 @@
     controlsRow.style.cssText = 'display:flex; gap:8px; align-items:center; flex-wrap:wrap;';
     controlsRow.appendChild(settingsBtn);
 
-    // Admin Options Button (Admin only)
-    if (isAdmin) {
-      const adminBtn = document.createElement('button');
-      adminBtn.textContent = '🛠️';
-      adminBtn.id = 'favstations-admin-btn';
-      adminBtn.style.cssText = `width:${dims.control.w}px; height:${dims.control.h}px; padding:0; background:#111; border:1px solid #333; border-radius:4px; color:#fff; font-size:${dims.font}px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; box-sizing:border-box;`;
-      adminBtn.addEventListener('mouseenter', () => {
-        showTip(adminBtn, 'Admin Options\nServer sync and startup settings.');
-      });
-      adminBtn.addEventListener('mouseleave', hideTip);
-      adminBtn.addEventListener('mousedown', hideTip);
-      adminBtn.onclick = (e) => {
-        e.stopPropagation();
-        const prev = document.getElementById('favstations-context-menu');
-        if (prev) {
-          prev.remove();
-        }
-        hideTip();
-        const rect = adminBtn.getBoundingClientRect();
-        const items = [
-          { label: 'Save Lists to Server', tooltip: "Save all current lists permanently to the server's data file.", action: persistStations },
-          { label: 'Edit default options', tooltip: 'Review and save current layout and startup settings as the new default for everyone.', action: () => openSettingsEditor(true) }
-        ];
-        showStationContextMenu(rect.left, rect.bottom + 5, { items });
-      };
-      controlsRow.appendChild(adminBtn);
-    }
-
     // List selector (shows all existing lists)
     const listSelect = document.createElement('select');
     listSelect.id = 'favstations-list-select';
     listSelect.style.cssText = `padding: 0 8px; height: ${dims.control.h}px; background: #222; color: #fff; border: 1px solid #444; border-radius: 6px; font-size: ${Math.round(13 * (dims.control.h / 28))}px; outline: none; cursor: pointer; vertical-align: middle; box-sizing:border-box;`;
-    listSelect.addEventListener('mouseenter', () => showTip(listSelect, 'Select the active station list.'));
+    listSelect.addEventListener('mouseenter', () => showTip(listSelect, 'Active List:\nSwitch between your station groups or create a new empty list.'));
     listSelect.addEventListener('mouseleave', hideTip);
     listSelect.addEventListener('mousedown', hideTip);
     listSelect.onchange = () => {
@@ -509,7 +484,7 @@
     clearTempBtn.onclick = () => {
       tempSlots = new Array(config.tempSlotCount).fill(null); renderTempSlots(); showToast('All slots cleared');
     };
-    clearTempBtn.addEventListener('mouseenter', () => showTip(clearTempBtn, 'Clear all temporary slots'));
+    clearTempBtn.addEventListener('mouseenter', () => showTip(clearTempBtn, 'Clear All Slots:\nRemove all stations from the temporary bank.'));
     clearTempBtn.addEventListener('mouseleave', hideTip);
     clearTempBtn.addEventListener('mousedown', hideTip);
     controlsRow.appendChild(clearTempBtn);
@@ -578,9 +553,13 @@
     btn.style.overflow = 'hidden';
     btn.style.fontSize = dims.tempFont + 'px';
 
-    const tooltipText = data 
-      ? (data.freq ? `${data.freq} MHz` : '') + (data.freq && data.name ? ' — ' : '') + (data.name || '') + (data.itu ? ` [${data.itu}]` : '') + (data.picode ? ` (${data.picode})` : '')
-      : `Temp slot ${si+1}: click to save current, click again to tune`;
+    let tooltipText = `Temp Slot ${si + 1}:\n`;
+    if (data) {
+        tooltipText += `${data.freq} MHz - ${data.name || 'Unnamed'}\nClick to tune. Ctrl+Click to overwrite. Right-click for options.`;
+    } else {
+        tooltipText += `Empty slot. Click to save the currently tuned station here for this session.`;
+    }
+
     btn.addEventListener('mouseenter', () => showTip(btn, tooltipText));
     btn.addEventListener('mouseleave', hideTip);
     btn.addEventListener('mousedown', hideTip);
@@ -746,7 +725,7 @@
       const dims = getButtonDims();
       const btn = document.createElement('button');
       btn.textContent = '＋';
-      btn.addEventListener('mouseenter', () => showTip(btn, 'Save current station to list'));
+      btn.addEventListener('mouseenter', () => showTip(btn, 'Add New Station:\nSave the current frequency, name, and PI code to this list.'));
       btn.addEventListener('mouseleave', hideTip);
       btn.addEventListener('mousedown', hideTip);
       btn.style.background = '#111';
@@ -857,9 +836,9 @@
     btn.style.background = '#111';
     btn.style.border = '1px solid #333';
     btn.style.color = '#fff';
-    // tooltip: frequency and name
-    const freqText = st.freq ? `${st.freq} MHz` : '';
-    const tooltipText = freqText + (st.freq && st.name ? ' — ' : '') + (st.name || '') + (st.itu ? ` [${st.itu}]` : '') + (st.picode ? ` (${st.picode})` : '');
+
+    const tooltipText = `Station: ${st.freq} MHz\n${st.name || 'No Name'} (${st.itu || '??'})\nClick to tune. Ctrl+Click to update. Drag to reorder. Right-click to edit.`;
+    
     btn.addEventListener('mouseenter', () => showTip(btn, tooltipText));
     btn.addEventListener('mouseleave', hideTip);
     btn.addEventListener('mousedown', hideTip);
@@ -1176,13 +1155,14 @@
     box.style.maxWidth = '96%';
     box.style.maxHeight = '86%';
     box.style.overflow = 'auto';
+    box.title = 'Manage your station lists: add, rename, delete, import, export, and reorder.';
     box.style.padding = '14px';
     box.style.borderRadius = '8px';
     box.style.background = '#fff';
     box.style.color = '#000';
 
     const title = document.createElement('h3');
-    title.textContent = 'Manage Lists';
+    title.innerHTML = `Manage Lists<br><span style="font-size: 11px; font-weight: normal; color: #777;">(FavStations v${pluginVersion})</span>`;
     box.appendChild(title);
 
     // Action buttons for Quick Management
@@ -1192,6 +1172,7 @@
     const addBtn = document.createElement('button');
     addBtn.textContent = '➕ Add New List';
     addBtn.style.padding = '6px 12px';
+    addBtn.title = 'Create a new empty collection of stations.';
     addBtn.onclick = () => {
       let name = prompt('Enter a name for the new list:', `List ${new Date().toISOString().slice(0,10)}`);
       if (name === null) return;
@@ -1202,6 +1183,7 @@
     const importBtn = document.createElement('button');
     importBtn.textContent = '📥 Import (JSON)';
     importBtn.style.padding = '6px 12px';
+    importBtn.title = 'Load lists from a previously exported FavStations JSON file.';
     importBtn.onclick = () => {
       const input = document.createElement('input');
       input.type = 'file';
@@ -1235,6 +1217,7 @@
     const exportBtn = document.createElement('button');
     exportBtn.textContent = '📤 Export (JSON)';
     exportBtn.style.padding = '6px 12px';
+    exportBtn.title = 'Download all current lists as a JSON file for backup.';
     exportBtn.onclick = () => exportStations();
 
     actionsBar.appendChild(addBtn);
@@ -1245,6 +1228,7 @@
       const serverSaveBtn = document.createElement('button');
       serverSaveBtn.textContent = '💾 Save to Server';
       serverSaveBtn.style.padding = '6px 12px';
+      serverSaveBtn.title = 'Admin: Permanently save these lists as the global default on the server.';
       serverSaveBtn.onclick = () => persistStations();
       actionsBar.appendChild(serverSaveBtn);
     }
@@ -1281,6 +1265,7 @@
 
         const renameBtn = document.createElement('button');
         renameBtn.textContent = 'Rename';
+        renameBtn.title = 'Change the name of this specific list.';
         renameBtn.onclick = async () => {
           let newName = prompt(`Rename list "${listName}" to:`, listName);
           if (newName === null) return;
@@ -1312,6 +1297,7 @@
 
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = 'Delete';
+        deleteBtn.title = 'Permanently delete this list and all its stations.';
         deleteBtn.onclick = async () => {
           if (Object.keys(listsObj).length <= 1) {
             return alert("You cannot delete the last list.");
@@ -1334,7 +1320,7 @@
 
         const upBtn = document.createElement('button');
         upBtn.textContent = '↑';
-        upBtn.title = 'Move up';
+        upBtn.title = 'Move this list up in the selection menu.';
         upBtn.disabled = index === 0;
         upBtn.onclick = async () => {
           const keys = Object.keys(listsObj);
@@ -1352,7 +1338,7 @@
 
         const downBtn = document.createElement('button');
         downBtn.textContent = '↓';
-        downBtn.title = 'Move down';
+        downBtn.title = 'Move this list down in the selection menu.';
         downBtn.disabled = index === listNames.length - 1;
         downBtn.onclick = async () => {
           const keys = Object.keys(listsObj);
@@ -1427,7 +1413,7 @@
     let titleText = isNew ? 'Add station' : 'Edit station';
     if (isTemp) titleText = 'Edit temp slot';
     if (isNew && isTemp) titleText = 'Add temp slot'; // Should not happen with current logic, but for completeness
-    title.textContent = titleText;
+    title.innerHTML = `${titleText}<br><span style="font-size: 11px; font-weight: normal; color: #777;">(FavStations v${pluginVersion})</span>`;
     box.appendChild(title);
 
     const form = document.createElement('div');
@@ -1484,7 +1470,7 @@
     const logoSearchBtn = document.createElement('button');
     logoSearchBtn.type = 'button';
     logoSearchBtn.textContent = '🔍';
-    logoSearchBtn.title = 'Search for logo using PI Code and ITU (add them if empty!)';
+    logoSearchBtn.title = 'Search for logo: Tries to find a matching icon using PI Code, Name, and ITU.';
 
     logoSearchBtn.style.width = '28px'; // Fixed width
     logoSearchBtn.style.height = '28px'; // Fixed height
@@ -2002,7 +1988,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     overlay.style.cssText = 'position:fixed; left:0; top:0; right:0; bottom:0; z-index:20000; background:rgba(0,0,0,0.85); display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; font-family:sans-serif; backdrop-filter:blur(4px);';
 
     const title = document.createElement('h3');
-    title.textContent = 'Drag the corner of the box to resize the buttons';
+    title.innerHTML = `Resize buttons<br><span style="font-size: 11px; font-weight: normal; color: #777;">(FavStations v${pluginVersion})</span>`;
     title.style.marginBottom = '20px';
     overlay.appendChild(title);
 
@@ -2128,6 +2114,11 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     msgParagraph.textContent = message;
     alertBox.appendChild(msgParagraph);
 
+    const versionInfo = document.createElement('div');
+    versionInfo.textContent = `v${pluginVersion}`;
+    versionInfo.style.cssText = 'font-size: 10px; color: #888; margin-top: 10px; text-align: right;';
+    alertBox.appendChild(versionInfo);
+
     const linkElement = document.createElement('a');
     linkElement.href = discordLink;
     linkElement.textContent = linkText;
@@ -2167,7 +2158,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     box.style.cssText = 'width:420px; max-width:96%; padding:20px; border-radius:8px; background:#fff; color:#000; font-family:sans-serif; display:flex; flex-direction:column; gap:16px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
 
     const title = document.createElement('h3');
-    title.textContent = 'Startup Loading Mode';
+    title.innerHTML = `Startup Loading Mode<br><span style="font-size: 11px; font-weight: normal; color: #777;">(FavStations v${pluginVersion})</span>`;
     title.style.margin = '0';
     box.appendChild(title);
 
@@ -2290,8 +2281,10 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     const box = document.createElement('div');
     box.style.cssText = 'width:480px; max-width:96%; padding:20px; border-radius:8px; background:#fff; color:#000; font-family:sans-serif; display:flex; flex-direction:column; gap:16px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
 
+    box.title = isGlobal ? 'Configure global settings for all users, including startup mode, station visibility, and button dimensions.' : 'Customize your local display settings, such as button dimensions and temporary slots.';
     const title = document.createElement('h3');
-    title.textContent = isGlobal ? 'Edit Global Default Configuration' : 'Local Settings & Preferences';
+    const mainTitle = isGlobal ? 'Edit Default Settings' : 'Edit Settings';
+    title.innerHTML = `${mainTitle}<br><span style="font-size: 11px; font-weight: normal; color: #777;">(FavStations v${pluginVersion})</span>`;
     title.style.margin = '0';
     box.appendChild(title);
 
@@ -2303,7 +2296,8 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     // --- Startup Mode ---
     let currentStartupMode = baseConfig.startupMode || 'server';
     let remoteInput;
-    if (isGlobal || isAdmin) {
+    let modeSelect;
+    if (isAdmin) {
       const startupModeGroup = document.createElement('fieldset');
       startupModeGroup.style.border = '1px solid #ccc';
       startupModeGroup.style.borderRadius = '4px';
@@ -2364,11 +2358,43 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       });
       startupModeGroup.appendChild(remoteContainer);
       form.appendChild(startupModeGroup);
+
+      // --- Show Stations Mode Selector ---
+      if (isGlobal) {
+        const modeLabel = document.createElement('label');
+        modeLabel.textContent = 'Preloaded Stations Visibility:';
+        modeLabel.style.display = (currentStartupMode === 'empty' ? 'none' : 'flex');
+        modeLabel.style.flexDirection = 'column';
+        modeLabel.style.gap = '4px';
+        modeSelect = document.createElement('select');
+        modeSelect.style.padding = '6px';
+        [
+          { val: 'all', text: 'Show for all users' },
+          { val: 'admin', text: 'Show only for Administrator' }
+        ].forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m.val;
+          opt.textContent = m.text;
+          if ((baseConfig.showStationsMode || 'all') === m.val) opt.selected = true;
+          modeSelect.appendChild(opt);
+        });
+        modeLabel.appendChild(modeSelect);
+        form.appendChild(modeLabel);
+
+        // Add listener to radios to toggle the mode label
+        form.querySelectorAll('input[name="fs-global-startup-mode"]').forEach(radio => {
+          const oldHandler = radio.onchange;
+          radio.onchange = () => {
+            oldHandler();
+            modeLabel.style.display = (currentStartupMode === 'empty' ? 'none' : 'flex');
+          };
+        });
+      }
     }
 
     // --- Show Logos ---
     let showLogosCheckbox;
-    if (isGlobal || isAdmin) {
+    if (isAdmin) {
       const showLogosLabel = document.createElement('label');
       showLogosLabel.style.display = 'flex';
       showLogosLabel.style.alignItems = 'center';
@@ -2398,39 +2424,6 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     tempSlotInput.style.width = '100px'; // Make it smaller
     tempSlotLabel.appendChild(tempSlotInput);
     form.appendChild(tempSlotLabel);
-
-    // --- Show Stations Mode Selector ---
-    let modeSelect;
-    if (isGlobal) {
-      const modeLabel = document.createElement('label');
-      modeLabel.textContent = 'Preloaded Stations Visibility:';
-      modeLabel.style.display = (currentStartupMode === 'empty' ? 'none' : 'flex');
-      modeLabel.style.flexDirection = 'column';
-      modeLabel.style.gap = '4px';
-      modeSelect = document.createElement('select');
-      modeSelect.style.padding = '6px';
-      [
-        { val: 'all', text: 'Show for all users' },
-        { val: 'admin', text: 'Show only for Administrator' }
-      ].forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m.val;
-        opt.textContent = m.text;
-        if ((baseConfig.showStationsMode || 'all') === m.val) opt.selected = true;
-        modeSelect.appendChild(opt);
-      });
-      modeLabel.appendChild(modeSelect);
-      form.appendChild(modeLabel);
-
-      // Add listener to radios to toggle the mode label
-      form.querySelectorAll('input[name="fs-global-startup-mode"]').forEach(radio => {
-        const oldHandler = radio.onchange;
-        radio.onchange = () => {
-          oldHandler();
-          modeLabel.style.display = (currentStartupMode === 'empty' ? 'none' : 'flex');
-        };
-      });
-    }
 
     // --- Button Dimensions ---
     const dimsLabel = document.createElement('label');
@@ -2473,7 +2466,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     visualEditorBtn.style.border = 'none';
     visualEditorBtn.style.borderRadius = '4px';
     visualEditorBtn.style.cursor = 'pointer';
-    visualEditorBtn.addEventListener('mouseenter', () => showTip(visualEditorBtn, 'Open a visual editor to drag and resize buttons.'));
+    visualEditorBtn.addEventListener('mouseenter', () => showTip(visualEditorBtn, 'Resize Utility:\nOpen a live preview where you can drag the corner of a button to set dimensions.'));
     visualEditorBtn.addEventListener('mouseleave', hideTip);
     visualEditorBtn.addEventListener('mousedown', hideTip);
 
@@ -2496,14 +2489,6 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     dimsRow.appendChild(visualEditorBtn); // Add the new button
     form.appendChild(dimsLabel);
 
-    // Help link for everyone
-    const helpLink = document.createElement('a');
-    helpLink.href = 'https://github.com/mm-prg/FavStations';
-    helpLink.target = '_blank';
-    helpLink.textContent = 'Documentation & Help (?)';
-    helpLink.style.cssText = 'font-size: 12px; color: #007bff; text-decoration: none; align-self: flex-start;';
-    form.appendChild(helpLink);
-
     box.appendChild(form);
 
     const actions = document.createElement('div');
@@ -2525,7 +2510,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     saveBtn.style.padding = '6px 16px';
     saveBtn.onclick = async () => {
       // Update global config object with values from the modal
-      if (isGlobal || isAdmin) {
+      if (isAdmin) {
         config.startupMode = currentStartupMode;
         if (currentStartupMode === 'remote' && remoteInput) {
           let url = remoteInput.value.trim();
@@ -2568,7 +2553,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
         if (showLogosCheckbox) config.showLogos = showLogosCheckbox.checked;
       }
 
-      if (isGlobal && modeSelect) config.showStationsMode = modeSelect.value;
+      if (isGlobal && isAdmin && modeSelect) config.showStationsMode = modeSelect.value;
 
       const newTempSlotCount = parseInt(tempSlotInput.value, 10);
       if (!isNaN(newTempSlotCount) && newTempSlotCount >= 1 && newTempSlotCount <= 30) {
@@ -2583,14 +2568,13 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       config.customHeight = parseInt(heightInput.value, 10) || 44;
       config.buttonSize = 'custom';
 
-      if (isGlobal) {
-        // Persist to server and local
+      if (isGlobal && isAdmin) {
+        // Persist to server (only for admins)
         await persistConfigToServer();
-        await persistConfig();
-      } else {
-        // Persist only locally
-        await persistConfig();
       }
+
+      // Always persist locally for the current user
+      await persistConfig();
 
       overlay.remove();
       
