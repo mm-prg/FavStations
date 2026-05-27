@@ -3,7 +3,8 @@
  * FavStations Plugin for FM-DX Webserver
  * ************************************************
  */
-// modifica di prova di check-menus
+// modifica di prova di check-menu
+// test per vedere il merge
 
 "use strict";
  
