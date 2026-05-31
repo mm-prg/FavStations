@@ -1067,7 +1067,7 @@
   }
 
   // fetch list from server, fallback to localStorage (support multiple lists in localStorage)
-  async function fetchList() {
+  async function fetchList(forceServer = false) {
     let serverLoaded = false;
     // Initialize loadMetadata to a default state. It will be updated if data is successfully loaded.
     loadMetadata = { origin: 'None', source: 'N/A', date: 'N/A' };
@@ -1078,7 +1078,8 @@
 
     if (canLoadServer) {
       try {
-        const res = await fetch('/plugins/FavStations/list');
+        // Use a timestamp to bypass browser cache when loading from server
+        const res = await fetch(`/plugins/FavStations/list?t=${Date.now()}`);
         if (res.ok) {
           const result = await res.json();
           // Support both old format (object) and new format ({data, metadata})
@@ -1088,12 +1089,23 @@
           // Expect an object of lists from the server
           if (serverLists && typeof serverLists === 'object' && !Array.isArray(serverLists) && Object.keys(serverLists).length > 0) {
             listsObj = serverLists;
-            // Se il server ha trovato metadati originali nel file, li usiamo, altrimenti impostiamo l'origine come Server
-            loadMetadata = { 
-                origin: metadata.origin || 'Server', 
-                source: metadata.source || 'FavStations_data.json', 
-                date: metadata.date || 'N/A' 
-            };
+
+            if (forceServer) {
+                // Quando forziamo il caricamento dal server, mostriamo i dati del file locale
+                loadMetadata = { 
+                    origin: 'Server', 
+                    source: 'FavStations_data.json', 
+                    date: result.serverDate || metadata.date || 'N/A' 
+                };
+            } else {
+                // Caricamento normale (es. all'avvio): preserviamo la genealogia originale dei dati
+                loadMetadata = { 
+                    origin: metadata.origin || 'Server', 
+                    source: metadata.source || 'FavStations_data.json', 
+                    date: metadata.date || 'N/A' 
+                };
+            }
+
             console.log('FavStations: Loaded station lists from server (/plugins/FavStations/list)');
             serverLoaded = true;
           }
@@ -1103,7 +1115,7 @@
 
     // If not admin, or server failed, load/merge from local storage
     const localLists = loadListsLocal();
-    if (localLists && Object.keys(localLists).length > 0) {
+    if (!forceServer && localLists && Object.keys(localLists).length > 0) {
       if (!isAdmin || !serverLoaded) {
         // If server didn't load, or user is not admin, local storage is the primary or overriding source.
         listsObj = { ...listsObj, ...localLists };
@@ -1228,7 +1240,6 @@
         <div style="display:grid; grid-template-columns: 80px 1fr; gap: 4px;">
           <b>Origin:</b> <span>${loadMetadata.origin}</span>
           <b>Source:</b> <span style="word-break: break-all;">${loadMetadata.source}</span>
-          <b>File Date:</b> <span>${loadMetadata.date}</span>
         </div>
       `;
     };
@@ -1318,11 +1329,10 @@
         await importFromRemote(true); // silent = true, so it will show its own success/failure toast
       } else {
         // Default: server
-        await fetchList();
+        await fetchList(true);
         showToast('Lists reloaded from server');
       }
       renderListManager();
-      if (typeof updateMetadataDisplay === 'function') updateMetadataDisplay();
       updateMetadataDisplay();
       renderButtons(); // Ensure buttons are re-rendered after data changes
       updateListSelect(); // Ensure list select is updated after data changes
@@ -1330,15 +1340,57 @@
     actionsBar.appendChild(reloadBtn);
 
     if (isAdmin) {
+      // New: Load from Server button (Admin only)
+      const loadFromServerBtn = document.createElement('button');
+      loadFromServerBtn.textContent = '☁️ Load from Server';
+      loadFromServerBtn.style.cssText = btnStyle;
+      loadFromServerBtn.title = 'Admin: Force reload all lists from the server\'s FavStations_data.json file, overriding local changes.';
+      loadFromServerBtn.onclick = async () => {
+        showToast('Loading lists from server...');
+        await fetchList(true); // Pass true to force server and bypass local storage
+        renderListManager();
+        updateMetadataDisplay();
+        renderButtons();
+        updateListSelect();
+        showToast('Lists loaded from server');
+      };
+      actionsBar.appendChild(loadFromServerBtn);
+
+      // New: Load from Remote button (Admin only)
+      const loadFromRemoteBtn = document.createElement('button');
+      loadFromRemoteBtn.textContent = '🌐 Load from Remote';
+      loadFromRemoteBtn.style.cssText = btnStyle;
+      loadFromRemoteBtn.title = 'Admin: Force import lists from a remote JSON URL (will prompt for URL if not configured), overriding local changes.';
+      loadFromRemoteBtn.onclick = async () => {
+        showToast('Loading lists from remote URL...');
+        const success = await importFromRemote(false); // silent = false, so it will prompt for URL if needed
+        if (success) {
+          renderListManager();
+          updateMetadataDisplay();
+          renderButtons();
+          updateListSelect();
+        }
+      };
+      actionsBar.appendChild(loadFromRemoteBtn);
+    }
+
+    if (isAdmin) {
       const serverSaveBtn = document.createElement('button');
       serverSaveBtn.textContent = '💾 Save to Server';
       serverSaveBtn.style.cssText = btnStyle;
       serverSaveBtn.title = 'Admin: Permanently save these lists as the global default on the server.';
       serverSaveBtn.onclick = async () => {
-        await persistStations();
-        // After saving to server, we refresh to get the new file date from server
-        await fetchList();
-        updateMetadataDisplay();
+        await persistStations(); // Salva prima localmente
+        const dataToSave = { data: listsObj, metadata: loadMetadata };
+        const ok = await saveServer(dataToSave);
+        if (ok) {
+          showToast('Successfully saved to server');
+          // Dopo il salvataggio, aggiorniamo i dati per recuperare i nuovi metadati (es. data file)
+          await fetchList();
+          updateMetadataDisplay();
+        } else {
+          showToast('Failed to save to server');
+        }
       };
       actionsBar.appendChild(serverSaveBtn);
     }
@@ -1725,16 +1777,7 @@
     stations.forEach((s) => { if (!s.picode) s.picode = generateId(); });
     listsObj[currentListName] = stations;
     saveListsLocal();
-
-    if (isAdmin) {
-      // Save wrapped with metadata to preserve the "Original Date" in the file content
-      const dataToSave = { data: listsObj, metadata: loadMetadata };
-      const ok = await saveServer(dataToSave);
-      if (!ok) showToast('Saved locally (server unavailable)');
-      else showToast('Saved');
-    } else {
-      showToast('Saved (locally)');
-    }
+    showToast('Saved (locally)');
   }
 
   // Get current antenna value

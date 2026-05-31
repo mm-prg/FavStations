@@ -106,7 +106,7 @@ endpointsRouter.get('/plugins/FavStations/list', (req, res) => {
       responseMeta = parsed.metadata;
     }
 
-    res.json({ data: responseData, metadata: responseMeta });
+    res.json({ data: responseData, metadata: responseMeta, serverDate: stats.mtime.toLocaleString() });
   } catch (e) {
     logError(`[${pluginName}] Error in /list:`, e);
     res.status(500).json({});
