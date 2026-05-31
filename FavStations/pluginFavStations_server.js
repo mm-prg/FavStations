@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * FavStations Plugin for FM-DX Webserver (v0.0.20)
+ * FavStations Plugin for FM-DX Webserver (v0.0.21)
  * ************************************************
  */
 
@@ -89,8 +89,24 @@ function saveData(list) {
 // GET list
 endpointsRouter.get('/plugins/FavStations/list', (req, res) => {
   try {
-    const data = loadData();
-    res.json(data);
+    if (!fs.existsSync(dataPath)) {
+      return res.json({ data: {}, metadata: { source: 'None', date: 'N/A' } });
+    }
+
+    const stats = fs.statSync(dataPath);
+    const raw = fs.readFileSync(dataPath, 'utf8');
+    const parsed = JSON.parse(raw || '{}');
+
+    let responseData = parsed;
+    let responseMeta = { source: 'FavStations_data.json', date: stats.mtime.toLocaleString() };
+
+    // Se il file contiene metadati salvati (es. quelli originali di GitHub), usiamo quelli
+    if (parsed && parsed.data && parsed.metadata && parsed.metadata.date) {
+      responseData = parsed.data;
+      responseMeta = parsed.metadata;
+    }
+
+    res.json({ data: responseData, metadata: responseMeta });
   } catch (e) {
     logError(`[${pluginName}] Error in /list:`, e);
     res.status(500).json({});
@@ -171,7 +187,16 @@ const fetchRemoteData = (url, maxRedirects = 5) => {
       let body = '';
       res.on('data', chunk => body += chunk);
       res.on('end', () => {
-        try { resolve(JSON.parse(body)); }
+        try { 
+          const jsonData = JSON.parse(body);
+          // GitHub e la maggior parte dei server usano 'last-modified'. Fallback su 'date' (ora del server remoto).
+          let rawDate = res.headers['last-modified'] || res.headers['date'];
+          let lastModified = 'N/A';
+          if (rawDate) {
+            lastModified = new Date(rawDate).toLocaleString();
+          }
+          resolve({ data: jsonData, lastModified }); 
+        }
         catch (e) { reject(new Error('Invalid JSON from remote')); }
       });
     }).on('error', reject);
@@ -183,8 +208,8 @@ endpointsRouter.post('/plugins/FavStations/fetch-remote', express.json(), async 
     const { url } = req.body;
     if (!url) return res.status(400).json({ ok: false, error: 'URL missing' });
     logInfo(`[${pluginName}] Fetching remote stations from ${url}...`);
-    const data = await fetchRemoteData(url);
-    res.json({ ok: true, data });
+    const { data, lastModified } = await fetchRemoteData(url);
+    res.json({ ok: true, data, lastModified });
   } catch (e) {
     logError(`[${pluginName}] Remote fetch failed:`, e);
     res.status(500).json({ ok: false, error: e.message });

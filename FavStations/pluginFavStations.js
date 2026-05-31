@@ -7,7 +7,7 @@
 "use strict";
  
 (() => {
-  const pluginVersion = '0.0.20';
+  const pluginVersion = '0.0.21';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -62,6 +62,7 @@
   let listsObj = {};
   let stations = [];
   let isAdmin = false;
+  let loadMetadata = { origin: 'None', source: 'None', date: 'N/A' };
 
   function checkAdminMode() {
     const bodyText = document.body.textContent || document.body.innerText;
@@ -143,6 +144,7 @@
       listsObj = { 'Default': [] };
       stations = [];
       currentListName = 'Default';
+      loadMetadata = { origin: 'Empty Startup', source: 'Generated', date: new Date().toLocaleString() };
       renderButtons();
       updateListSelect();
     } else if (mode === 'remote') {
@@ -169,7 +171,7 @@
       };
     }
     // Default 'normal' dimensions
-    return { station: { w: 72, h: 44 }, control: { w: 48, h: 28 }, font: 16, stationFont: 14, nameFont: 10, tempFont: 12, tempNameFont: 9 };
+    return { station: { w: 120, h: 60 }, control: { w: 48, h: 28 }, font: 16, stationFont: 14, nameFont: 10, tempFont: 12, tempNameFont: 9 };
   }
 
   // Function to persist configuration on server and locally
@@ -234,7 +236,10 @@
       });
       const data = await res.json();
       if (data && data.ok && data.data) {
-        const parsed = data.data;
+        const rawData = data.data;
+        // Check if data is wrapped in our new metadata format
+        const parsed = (rawData && rawData.data && !Array.isArray(rawData.data)) ? rawData.data : rawData;
+
         console.log(`FavStations: Imported stations from remote URL: ${url}`);
         // Updates remote URL in configuration if changed
         if (url !== config.remoteStationsUrl) {
@@ -282,6 +287,7 @@
           throw new Error('Invalid format');
         }
 
+        loadMetadata = { origin: 'Remote URL', source: url, date: data.lastModified || new Date().toLocaleString() };
         await persistStations();
         renderButtons();
         updateListSelect();
@@ -308,7 +314,10 @@
       if (!file) return;
       try {
         const txt = await file.text();
-        const parsed = JSON.parse(txt);
+        const rawData = JSON.parse(txt);
+        // Check for metadata wrapper
+        const parsed = (rawData && rawData.data && !Array.isArray(rawData.data)) ? rawData.data : rawData;
+
         console.log(`FavStations: Imported stations from local file: ${file.name}`);
         if (Array.isArray(parsed)) {
           // Legacy format (single list)
@@ -349,6 +358,7 @@
         } else {
           throw new Error('Invalid format');
         }
+        loadMetadata = { origin: 'Local File', source: file.name, date: new Date(file.lastModified).toLocaleString() };
         await persistStations();
         renderButtons();
         updateListSelect();
@@ -365,8 +375,11 @@
   async function exportStations() {
     await persistStations();
     try {
-      const dataObj = (listsObj && Object.keys(listsObj).length) ? listsObj : { [currentListName]: (stations || []) };
-      const blob = new Blob([JSON.stringify(dataObj, null, 2)], { type: 'application/json' });
+      const dataToExport = {
+        data: (listsObj && Object.keys(listsObj).length) ? listsObj : { [currentListName]: (stations || []) },
+        metadata: loadMetadata
+      };
+      const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
       const now = new Date();
       const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const filename = `FavStations (${dateStr}).json`;
@@ -416,7 +429,7 @@
     settingsBtn.style.alignItems = 'center';
     settingsBtn.style.justifyContent = 'center';
 
-    settingsBtn.addEventListener('mouseenter', () => showTip(settingsBtn, 'Settings Menu:\nManage your station lists, customize button sizes, and configure server sync.'));
+    settingsBtn.addEventListener('mouseenter', () => showTip(settingsBtn, `FavStations v${pluginVersion}\nSettings Menu:\nManage your station lists, customize button sizes, and configure server sync.`));
     settingsBtn.addEventListener('mouseleave', hideTip);
     settingsBtn.addEventListener('mousedown', hideTip);
 
@@ -435,6 +448,17 @@
           label: 'Edit Settings',
           tooltip: isAdmin ? 'Global Admin Settings: Define startup behavior and layout for all users.' : 'Personal Settings: Customize button dimensions and local preferences.',
           action: () => openSettingsEditor(true)
+        },
+        {
+          label: config.showLogos ? 'Hide Logos' : 'Show Logos',
+          tooltip: 'Toggle the display of station logos on the buttons (browser-only setting).',
+          action: async () => {
+            config.showLogos = !config.showLogos;
+            await persistConfig();
+            renderButtons();
+            renderTempSlots();
+            showToast(`Logos ${config.showLogos ? 'enabled' : 'disabled'}`);
+          }
         },
         {
           label: '?',
@@ -1045,6 +1069,9 @@
   // fetch list from server, fallback to localStorage (support multiple lists in localStorage)
   async function fetchList() {
     let serverLoaded = false;
+    // Initialize loadMetadata to a default state. It will be updated if data is successfully loaded.
+    loadMetadata = { origin: 'None', source: 'N/A', date: 'N/A' };
+
 
     // Only fetch from server if mode is 'all' or if user is admin
     const canLoadServer = (config.showStationsMode === 'all') || isAdmin;
@@ -1053,10 +1080,20 @@
       try {
         const res = await fetch('/plugins/FavStations/list');
         if (res.ok) {
-          const serverLists = await res.json();
+          const result = await res.json();
+          // Support both old format (object) and new format ({data, metadata})
+          const serverLists = result.data || {};
+          const metadata = result.metadata || { origin: 'Server', source: 'FavStations_data.json', date: 'N/A' };
+
           // Expect an object of lists from the server
           if (serverLists && typeof serverLists === 'object' && !Array.isArray(serverLists) && Object.keys(serverLists).length > 0) {
             listsObj = serverLists;
+            // Se il server ha trovato metadati originali nel file, li usiamo, altrimenti impostiamo l'origine come Server
+            loadMetadata = { 
+                origin: metadata.origin || 'Server', 
+                source: metadata.source || 'FavStations_data.json', 
+                date: metadata.date || 'N/A' 
+            };
             console.log('FavStations: Loaded station lists from server (/plugins/FavStations/list)');
             serverLoaded = true;
           }
@@ -1068,16 +1105,24 @@
     const localLists = loadListsLocal();
     if (localLists && Object.keys(localLists).length > 0) {
       if (!isAdmin || !serverLoaded) {
+        // If server didn't load, or user is not admin, local storage is the primary or overriding source.
         listsObj = { ...listsObj, ...localLists };
+        loadMetadata = { origin: 'Local Storage', source: 'Browser Cache', date: 'N/A' }; // Set metadata if local storage is the effective source
         console.log('FavStations: Loaded station lists from local storage');
       }
     }
 
     // If no lists are loaded, initialize with a "Default" list
     if (!listsObj || Object.keys(listsObj).length === 0) {
-      const old = loadLocal();
-      listsObj = {};
-      listsObj[currentListName] = old || [];
+      const oldSingleList = loadLocal(); // Try to load from old single-list format
+      if (oldSingleList && oldSingleList.length > 0) {
+        listsObj = { 'Default': oldSingleList };
+        loadMetadata = { origin: 'Legacy Local Storage', source: 'Browser Cache (v1)', date: 'N/A' };
+      } else {
+        listsObj = { 'Default': [] };
+        loadMetadata = { origin: 'New Default List', source: 'Generated', date: new Date().toLocaleString() };
+      }
+      currentListName = 'Default'; // Ensure currentListName is set to 'Default'
     }
 
     // Assicurati che currentListName sia valido, o imposta la prima lista disponibile
@@ -1087,6 +1132,7 @@
     } else if (listNames.length === 0) { // Questo caso dovrebbe essere già coperto, ma come salvaguardia
       listsObj = { 'Default': [] };
       currentListName = 'Default';
+      loadMetadata = { origin: 'New Default List', source: 'Generated', date: new Date().toLocaleString() };
     }
 
     stations = listsObj[currentListName] || [];
@@ -1150,28 +1196,56 @@
     overlay.style.justifyContent = 'center';
     overlay.style.background = 'rgba(0,0,0,0.6)';
 
+    const closeOverlay = () => {
+      overlay.remove();
+      document.removeEventListener('keydown', handleEsc);
+    };
+    const handleEsc = (e) => { if (e.key === 'Escape') closeOverlay(); };
+    document.addEventListener('keydown', handleEsc);
+
+    overlay.onclick = (e) => { if (e.target === overlay) closeOverlay(); };
+
     const box = document.createElement('div');
     box.style.width = '560px';
     box.style.maxWidth = '96%';
     box.style.maxHeight = '86%';
-    box.style.overflow = 'auto';
+    box.style.overflow = 'hidden'; // Evita che la scrollbar tagli gli angoli
     box.title = 'Manage your station lists: add, rename, delete, import, export, and reorder.';
-    box.style.padding = '14px';
-    box.style.borderRadius = '8px';
-    box.style.background = '#fff';
-    box.style.color = '#000';
+    box.style.cssText = 'width:560px; maxWidth:96%; maxHeight:86%; padding:10px 14px; border-radius:12px; background:#fff; color:#000; display:flex; flex-direction:column; box-shadow: 0 10px 30px rgba(0,0,0,0.5);';
 
     const title = document.createElement('h3');
     title.innerHTML = `Manage Lists<br><span style="font-size: 11px; font-weight: normal; color: #777;">(FavStations v${pluginVersion})</span>`;
+    title.style.margin = '0 0 10px 0';
     box.appendChild(title);
+    makeDraggable(box, title);
+
+    const metaInfo = document.createElement('div');
+    metaInfo.id = 'favstations-meta-info';
+    metaInfo.style.cssText = 'font-size: 12px; color: #555; background: #f5f5f5; padding: 8px 10px; border-radius: 6px; margin-bottom: 10px; border: 1px solid #ddd; line-height: 1.4;';
+    const updateMetadataDisplay = () => {
+      if (!isAdmin) return;
+      metaInfo.innerHTML = `
+        <div style="display:grid; grid-template-columns: 80px 1fr; gap: 4px;">
+          <b>Origin:</b> <span>${loadMetadata.origin}</span>
+          <b>Source:</b> <span style="word-break: break-all;">${loadMetadata.source}</span>
+          <b>File Date:</b> <span>${loadMetadata.date}</span>
+        </div>
+      `;
+    };
+    if (isAdmin) {
+      updateMetadataDisplay();
+      box.appendChild(metaInfo);
+    }
 
     // Action buttons for Quick Management
     const actionsBar = document.createElement('div');
-    actionsBar.style.cssText = 'display:flex; gap:10px; margin-bottom:20px; padding-bottom:12px; border-bottom:1px solid #eee;';
+    actionsBar.style.cssText = 'display:flex; gap:10px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid #eee; flex-wrap: wrap;';
+
+    const btnStyle = 'padding: 6px 12px; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; background: #f8f8f8; flex: 1; text-align: center; white-space: nowrap; font-size: 13px; min-width: 120px;';
 
     const addBtn = document.createElement('button');
     addBtn.textContent = '➕ Add New List';
-    addBtn.style.padding = '6px 12px';
+    addBtn.style.cssText = btnStyle;
     addBtn.title = 'Create a new empty collection of stations.';
     addBtn.onclick = () => {
       let name = prompt('Enter a name for the new list:', `List ${new Date().toISOString().slice(0,10)}`);
@@ -1182,7 +1256,7 @@
 
     const importBtn = document.createElement('button');
     importBtn.textContent = '📥 Import (JSON)';
-    importBtn.style.padding = '6px 12px';
+    importBtn.style.cssText = btnStyle;
     importBtn.title = 'Load lists from a previously exported FavStations JSON file.';
     importBtn.onclick = () => {
       const input = document.createElement('input');
@@ -1204,10 +1278,13 @@
             if (Object.keys(listsObj).length > 0 && !listsObj[currentListName]) currentListName = Object.keys(listsObj)[0];
             stations = listsObj[currentListName] || [];
           }
+          loadMetadata = { origin: 'Local File', source: file.name, date: new Date(file.lastModified).toLocaleString() };
+          saveListsLocal();
           await persistStations();
           renderButtons();
           updateListSelect();
           renderListManager(); // Refresh the manager view
+          updateMetadataDisplay();
           showToast(`Imported ${file.name}`);
         } catch (e) { alert('Import failed: ' + e.message); }
       };
@@ -1216,7 +1293,7 @@
 
     const exportBtn = document.createElement('button');
     exportBtn.textContent = '📤 Export (JSON)';
-    exportBtn.style.padding = '6px 12px';
+    exportBtn.style.cssText = btnStyle;
     exportBtn.title = 'Download all current lists as a JSON file for backup.';
     exportBtn.onclick = () => exportStations();
 
@@ -1224,48 +1301,80 @@
     actionsBar.appendChild(importBtn);
     actionsBar.appendChild(exportBtn);
 
+    const reloadBtn = document.createElement('button');
+    reloadBtn.textContent = '🔄 Reload';
+    reloadBtn.style.cssText = btnStyle;
+    reloadBtn.title = 'Refresh the station lists from the server or local storage.';
+    reloadBtn.onclick = async () => {
+      const mode = config.startupMode || 'server';
+      if (mode === 'empty') {
+        listsObj = { 'Default': [] };
+        stations = [];
+        currentListName = 'Default';
+        loadMetadata = { origin: 'Empty Startup', source: 'Generated', date: new Date().toLocaleString() };
+        showToast('Lists reset to empty');
+      } else if (mode === 'remote') {
+        showToast('Reloading from remote URL...');
+        await importFromRemote(true); // silent = true, so it will show its own success/failure toast
+      } else {
+        // Default: server
+        await fetchList();
+        showToast('Lists reloaded from server');
+      }
+      renderListManager();
+      if (typeof updateMetadataDisplay === 'function') updateMetadataDisplay();
+      updateMetadataDisplay();
+      renderButtons(); // Ensure buttons are re-rendered after data changes
+      updateListSelect(); // Ensure list select is updated after data changes
+    };
+    actionsBar.appendChild(reloadBtn);
+
     if (isAdmin) {
       const serverSaveBtn = document.createElement('button');
       serverSaveBtn.textContent = '💾 Save to Server';
-      serverSaveBtn.style.padding = '6px 12px';
+      serverSaveBtn.style.cssText = btnStyle;
       serverSaveBtn.title = 'Admin: Permanently save these lists as the global default on the server.';
-      serverSaveBtn.onclick = () => persistStations();
+      serverSaveBtn.onclick = async () => {
+        await persistStations();
+        // After saving to server, we refresh to get the new file date from server
+        await fetchList();
+        updateMetadataDisplay();
+      };
       actionsBar.appendChild(serverSaveBtn);
     }
 
     box.appendChild(actionsBar);
 
+    const scrollContent = document.createElement('div');
+    scrollContent.style.cssText = 'flex:1; overflow-y:auto; padding-right:4px; max-height:200px;';
+
     const listDiv = document.createElement('div');
-    listDiv.style.display = 'flex';
-    listDiv.style.flexDirection = 'column';
-    listDiv.style.gap = '8px';
-    listDiv.style.marginBottom = '12px';
+    listDiv.style.cssText = 'display:flex; flex-direction:column; gap:4px; margin-bottom:8px;';
 
     function renderListManager() {
       listDiv.innerHTML = '';
       const listNames = Object.keys(listsObj);
+      const actionBtnBase = 'width:28px; height:28px; display:flex; align-items:center; justify-content:center; border:1px solid #ddd; border-radius:4px; background:#fff; cursor:pointer; font-size:14px; transition:all 0.1s ease; padding:0; outline:none;';
 
       listNames.forEach((listName, index) => {
         const row = document.createElement('div');
-        row.style.display = 'flex';
-        row.style.alignItems = 'center';
-        row.style.justifyContent = 'space-between';
-        row.style.gap = '8px';
-        row.style.padding = '4px';
-        row.style.border = '1px solid #ccc';
-        row.style.borderRadius = '4px';
+        row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:12px; padding:3px 8px; border:1px solid #eee; border-radius:6px; background:#f9f9f9; transition:background 0.2s; margin-bottom:2px;';
+        row.onmouseenter = () => row.style.background = '#f1f1f1';
+        row.onmouseleave = () => row.style.background = '#f9f9f9';
 
         const nameSpan = document.createElement('span');
         nameSpan.textContent = listName;
-        nameSpan.style.fontWeight = 'bold';
+        nameSpan.style.cssText = 'font-weight:600; font-size:13px; color:#333; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
 
         const actions = document.createElement('div');
-        actions.style.display = 'flex';
-        actions.style.gap = '6px';
+        actions.style.cssText = 'display:flex; gap:4px;';
 
         const renameBtn = document.createElement('button');
-        renameBtn.textContent = 'Rename';
-        renameBtn.title = 'Change the name of this specific list.';
+        renameBtn.textContent = '✏️';
+        renameBtn.title = 'Rename this list';
+        renameBtn.style.cssText = actionBtnBase;
+        renameBtn.onmouseenter = () => { renameBtn.style.background = '#eef6ff'; renameBtn.style.borderColor = '#007bff'; };
+        renameBtn.onmouseleave = () => { renameBtn.style.background = '#fff'; renameBtn.style.borderColor = '#ddd'; };
         renameBtn.onclick = async () => {
           let newName = prompt(`Rename list "${listName}" to:`, listName);
           if (newName === null) return;
@@ -1296,8 +1405,11 @@
         actions.appendChild(renameBtn);
 
         const deleteBtn = document.createElement('button');
-        deleteBtn.textContent = 'Delete';
-        deleteBtn.title = 'Permanently delete this list and all its stations.';
+        deleteBtn.textContent = '🗑️';
+        deleteBtn.title = 'Delete this list';
+        deleteBtn.style.cssText = actionBtnBase;
+        deleteBtn.onmouseenter = () => { deleteBtn.style.background = '#fff0f0'; deleteBtn.style.borderColor = '#dc3545'; };
+        deleteBtn.onmouseleave = () => { deleteBtn.style.background = '#fff'; deleteBtn.style.borderColor = '#ddd'; };
         deleteBtn.onclick = async () => {
           if (Object.keys(listsObj).length <= 1) {
             return alert("You cannot delete the last list.");
@@ -1319,9 +1431,15 @@
         actions.appendChild(deleteBtn);
 
         const upBtn = document.createElement('button');
-        upBtn.textContent = '↑';
-        upBtn.title = 'Move this list up in the selection menu.';
+        upBtn.textContent = '🔼';
+        upBtn.title = 'Move up';
+        upBtn.style.cssText = actionBtnBase;
         upBtn.disabled = index === 0;
+        if (upBtn.disabled) upBtn.style.opacity = '0.35';
+        else {
+          upBtn.onmouseenter = () => { upBtn.style.background = '#f0f0f0'; upBtn.style.borderColor = '#999'; };
+          upBtn.onmouseleave = () => { upBtn.style.background = '#fff'; upBtn.style.borderColor = '#ddd'; };
+        }
         upBtn.onclick = async () => {
           const keys = Object.keys(listsObj);
           if (index > 0) {
@@ -1337,9 +1455,15 @@
         actions.appendChild(upBtn);
 
         const downBtn = document.createElement('button');
-        downBtn.textContent = '↓';
-        downBtn.title = 'Move this list down in the selection menu.';
+        downBtn.textContent = '🔽';
+        downBtn.title = 'Move down';
+        downBtn.style.cssText = actionBtnBase;
         downBtn.disabled = index === listNames.length - 1;
+        if (downBtn.disabled) downBtn.style.opacity = '0.35';
+        else {
+          downBtn.onmouseenter = () => { downBtn.style.background = '#f0f0f0'; downBtn.style.borderColor = '#999'; };
+          downBtn.onmouseleave = () => { downBtn.style.background = '#fff'; downBtn.style.borderColor = '#ddd'; };
+        }
         downBtn.onclick = async () => {
           const keys = Object.keys(listsObj);
           if (index < keys.length - 1) {
@@ -1361,21 +1485,16 @@
     }
 
     renderListManager();
-    box.appendChild(listDiv);
+    scrollContent.appendChild(listDiv);
+    box.appendChild(scrollContent);
 
     const footer = document.createElement('div');
-    footer.style.cssText = 'display:flex; justify-content:flex-end; gap:10px; margin-top:16px;';
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.style.padding = '6px 16px';
-    cancelBtn.onclick = () => overlay.remove();
-    footer.appendChild(cancelBtn);
+    footer.style.cssText = 'display:flex; justify-content:flex-end; gap:10px; margin-top:10px;';
 
     const closeBtn = document.createElement('button');
     closeBtn.textContent = 'Close';
     closeBtn.style.padding = '6px 16px';
-    closeBtn.onclick = () => overlay.remove();
+    closeBtn.onclick = closeOverlay;
     footer.appendChild(closeBtn);
 
     box.appendChild(footer);
@@ -1402,12 +1521,22 @@
     overlay.style.justifyContent = 'center';
     overlay.style.background = 'rgba(0,0,0,0.6)';
 
+    const closeOverlay = () => {
+      overlay.remove();
+      document.removeEventListener('keydown', handleEsc);
+    };
+    const handleEsc = (e) => { if (e.key === 'Escape') closeOverlay(); };
+    document.addEventListener('keydown', handleEsc);
+
+    overlay.onclick = (e) => { if (e.target === overlay) closeOverlay(); };
+
     const box = document.createElement('div');
     box.style.width = isTemp ? '520px' : '560px';
     box.style.maxWidth = '96%';
     box.style.padding = '12px';
-    box.style.borderRadius = '8px';
+    box.style.borderRadius = '12px';
     box.style.background = '#fff';
+    box.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)';
 
     const title = document.createElement('h3');
     let titleText = isNew ? 'Add station' : 'Edit station';
@@ -1415,6 +1544,7 @@
     if (isNew && isTemp) titleText = 'Add temp slot'; // Should not happen with current logic, but for completeness
     title.innerHTML = `${titleText}<br><span style="font-size: 11px; font-weight: normal; color: #777;">(FavStations v${pluginVersion})</span>`;
     box.appendChild(title);
+    makeDraggable(box, title);
 
     const form = document.createElement('div');
     form.style.display = 'grid';
@@ -1478,6 +1608,8 @@
     logoSearchBtn.style.fontSize = '14px'; // Smaller font size for the icon
     logoSearchBtn.style.flexShrink = '0'; // Prevent button from shrinking
     logoSearchBtn.style.display = 'flex'; // Use flex to center content
+    logoSearchBtn.style.alignItems = 'center';
+    logoSearchBtn.style.justifyContent = 'center';
 
     logoSearchBtn.onclick = async (e) => {
       e.preventDefault();
@@ -1493,6 +1625,21 @@
       }
     };
     logoInputContainer.appendChild(logoSearchBtn);
+
+    const logoBrowseBtn = document.createElement('button');
+    logoBrowseBtn.type = 'button';
+    logoBrowseBtn.textContent = '🌐';
+    logoBrowseBtn.title = 'Logo Browser: Open the station logo repository to manually find a logo.';
+    logoBrowseBtn.style.width = '28px';
+    logoBrowseBtn.style.height = '28px';
+    logoBrowseBtn.style.padding = '0';
+    logoBrowseBtn.style.fontSize = '14px';
+    logoBrowseBtn.style.flexShrink = '0';
+    logoBrowseBtn.style.display = 'flex';
+    logoBrowseBtn.style.alignItems = 'center';
+    logoBrowseBtn.style.justifyContent = 'center';
+    logoBrowseBtn.onclick = () => window.open('https://tef.noobish.eu/logos/logo_preview.html', '_blank');
+    logoInputContainer.appendChild(logoBrowseBtn);
 
     logoLabel.appendChild(logoInputContainer);
     form.appendChild(logoLabel);
@@ -1556,7 +1703,7 @@
           sourceArr.push(item);
         }
         await persistStations();
-        overlay.remove();
+        closeOverlay();
         renderButtons();
       }
     };
@@ -1564,7 +1711,7 @@
 
     const cancelBtn = document.createElement('button');
     cancelBtn.textContent = 'Cancel';
-    cancelBtn.onclick = () => overlay.remove();
+    cancelBtn.onclick = closeOverlay;
     actions.appendChild(cancelBtn);
 
     box.appendChild(actions);
@@ -1580,8 +1727,9 @@
     saveListsLocal();
 
     if (isAdmin) {
-      // Save the entire lists object to the server
-      const ok = await saveServer(listsObj);
+      // Save wrapped with metadata to preserve the "Original Date" in the file content
+      const dataToSave = { data: listsObj, metadata: loadMetadata };
+      const ok = await saveServer(dataToSave);
       if (!ok) showToast('Saved locally (server unavailable)');
       else showToast('Saved');
     } else {
@@ -1977,6 +2125,44 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     return String(s || '').replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]; });
   }
 
+  // Helper to make panels draggable by their title
+  function makeDraggable(el, handle) {
+    handle.style.cursor = 'move';
+    handle.style.userSelect = 'none';
+    handle.onmousedown = (e) => {
+      // Don't trigger drag if clicking buttons or inputs inside the handle
+      if (['INPUT', 'BUTTON', 'SELECT'].includes(e.target.tagName)) return;
+      
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      // Switch from flex centering to absolute positioning for free movement
+      el.style.position = 'absolute';
+      el.style.margin = '0';
+      el.style.left = rect.left + 'px';
+      el.style.top = rect.top + 'px';
+
+      let startX = e.clientX;
+      let startY = e.clientY;
+
+      const onMouseMove = (me) => {
+        const dx = me.clientX - startX;
+        const dy = me.clientY - startY;
+        el.style.left = (el.offsetLeft + dx) + 'px';
+        el.style.top = (el.offsetTop + dy) + 'px';
+        startX = me.clientX;
+        startY = me.clientY;
+      };
+
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    };
+  }
+
   // Visual dimension editor
   function openDimensionEditor(params = {}) {
     // Support both direct callback (old way) or options object
@@ -2278,15 +2464,25 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed; left:0; top:0; right:0; bottom:0; z-index:20002; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.6);';
 
+    const closeOverlay = () => {
+      overlay.remove();
+      document.removeEventListener('keydown', handleEsc);
+    };
+    const handleEsc = (e) => { if (e.key === 'Escape') closeOverlay(); };
+    document.addEventListener('keydown', handleEsc);
+
+    overlay.onclick = (e) => { if (e.target === overlay) closeOverlay(); };
+
     const box = document.createElement('div');
     box.style.cssText = 'width:480px; max-width:96%; padding:20px; border-radius:8px; background:#fff; color:#000; font-family:sans-serif; display:flex; flex-direction:column; gap:16px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
-
+    box.style.borderRadius = '12px';
     box.title = isGlobal ? 'Configure global settings for all users, including startup mode, station visibility, and button dimensions.' : 'Customize your local display settings, such as button dimensions and temporary slots.';
     const title = document.createElement('h3');
     const mainTitle = isGlobal ? 'Edit Default Settings' : 'Edit Settings';
     title.innerHTML = `${mainTitle}<br><span style="font-size: 11px; font-weight: normal; color: #777;">(FavStations v${pluginVersion})</span>`;
     title.style.margin = '0';
     box.appendChild(title);
+    makeDraggable(box, title);
 
     const form = document.createElement('div');
     form.style.display = 'flex';
@@ -2440,14 +2636,14 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     const widthInput = document.createElement('input');
     widthInput.type = 'number';
     widthInput.min = '40';
-    widthInput.value = baseConfig.customWidth || 72;
+    widthInput.value = baseConfig.customWidth || 120;
     widthInput.style.padding = '6px';
     widthInput.style.width = '80px';
 
     const heightInput = document.createElement('input');
     heightInput.type = 'number';
     heightInput.min = '24';
-    heightInput.value = baseConfig.customHeight || 44;
+    heightInput.value = baseConfig.customHeight || 60;
     heightInput.style.padding = '6px';
     heightInput.style.width = '80px';
 
@@ -2564,8 +2760,8 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       }
 
       // Update dimensions
-      config.customWidth = parseInt(widthInput.value, 10) || 72;
-      config.customHeight = parseInt(heightInput.value, 10) || 44;
+      config.customWidth = parseInt(widthInput.value, 10) || 120;
+      config.customHeight = parseInt(heightInput.value, 10) || 60;
       config.buttonSize = 'custom';
 
       if (isGlobal && isAdmin) {
@@ -2576,7 +2772,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
       // Always persist locally for the current user
       await persistConfig();
 
-      overlay.remove();
+      closeOverlay();
       
       // Update temporary slots if count changed
       tempSlots = new Array(config.tempSlotCount).fill(null);
@@ -2590,7 +2786,7 @@ let logo = logoEl && logoEl.src ? logoEl.src : '';
     const cancelBtn = document.createElement('button');
     cancelBtn.textContent = 'Cancel';
     cancelBtn.style.padding = '6px 16px';
-    cancelBtn.onclick = () => overlay.remove();
+    cancelBtn.onclick = closeOverlay;
 
     rightActions.appendChild(cancelBtn);
     rightActions.appendChild(saveBtn);
