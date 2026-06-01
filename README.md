@@ -30,8 +30,8 @@ There is a line of temporary slots, useful for watching frequencies.
 
 Follow these steps to install the plugin:
 
-1. Copy the `Updater.js` descriptor file into the `/plugins` directory of your FM-DX-Webserver.
-2. Copy the entire `Updater/` folder into the `/plugins` directory.
+1. Copy the `FavStations.js` descriptor file into the `/plugins` directory of your FM-DX-Webserver.
+2. Copy the entire `FavStations/` folder into the `/plugins` directory.
 3. Restart the FM-DX-Webserver.
 4. Log in to the administrator panel, enable the plugin in the Setup page, and save.
 5. Restart the FM-DX-Webserver one more time.
@@ -41,12 +41,12 @@ Follow these steps to install the plugin:
 ## Usage Guide
 
 ### Station Buttons
-*   **Add a new station:** Simpley click on the "+" button. You can freely mix fm, oirt, mw, sw stations
+*   **Add a new station:** Simply click on the "+" button. You can freely mix fm, oirt, mw, sw stations
 *   **Click:** Tune to the station frequency.
 *   **Ctrl + Click:** Overwrite the button with the currently tuned station's data (Frequency, Name, PI, etc.).
 *   **Right-Click / Long Press:** Open the context menu to edit or delete the station.
 *   **Double-Click:** Open the station editor directly.
-*   **Select a List:** Click on dropdown list menu
+*   **Select a List:** Click on the dropdown list menu
 *   **Add a new List:** Open the drop down menu and click on "+New List"
 
 ### Temporary Slots
@@ -69,7 +69,7 @@ Follow these steps to install the plugin:
 
 <img width="1020" height="194" alt="logo on" src="https://github.com/user-attachments/assets/8498be1a-a2ae-4045-b5bd-8c78a62dae62" />
 
-* In the gear menu, there's an option to toggle logos visibility, that shows the stations description
+* In the gear menu, there's an option to toggle logos visibility, that shows frequencies and descriptions
   
 <img width="1013" height="186" alt="logo off" src="https://github.com/user-attachments/assets/592bb445-f061-473a-8460-27bf21da621c" />
 
