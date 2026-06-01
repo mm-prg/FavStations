@@ -53,10 +53,10 @@ Follow these steps to install the plugin:
 
 <img width="1124" height="57" alt="header" src="https://github.com/user-attachments/assets/1c63506f-a3bd-4c62-a63e-dcbe10522e99" />
 
-* You may use up to 30 temporary slots for quick, session-based storing
-* It may be useful to store frequencies you're observing. 
-* If you made a list of local stations, you may also easily compare these frequencies, to find out if an unknown signal (without pi code) transmits the same signal.
-* I.e., if you have an unidentified signal, store it on a temporary slot. Then select your list of local stations: the temporary slots remain there. Now you can easily click/tune the unidentified station and the know local stations, to find out if they match. 
+*   You may use up to 30 temporary slots for quick, session-based storing
+*   It may be useful to store frequencies you're observing. 
+*   If you made a list of local stations, you may also easily compare these frequencies, to find out if an unknown signal (without pi code) transmits the same signal.
+*   I.e., if you have an unidentified signal, store it on a temporary slot. Then select your list of local stations: the temporary slots remain there. Now you can easily click/tune the unidentified station and the know local stations, to find out if they match. 
 
 *   **Click:** If the slot is empy, it stores the tuned frequency. If it contains a station, it tunes the station frequency.
 *   **Cross Icon:** To clears all slots
@@ -66,11 +66,12 @@ Follow these steps to install the plugin:
 
 <img width="566" height="320" alt="edit station page" src="https://github.com/user-attachments/assets/187053a0-db29-4bdf-aa61-0d6767ecf97c" />
 
-* You can edit the station data, double clicking on it
-* You can insert any description you want
-* You can insert the url of the station logo or leave it empty. You can even add logos to oirt/mw/sw stations in you want
-* The "world" icon opens the preview of the Logo Repository of FM-DX-Webserver, where you can find many logos
-* If you insert the Pi code and the ITU code of the station, clicking on the "research" icon will try to find the station logo
+*   You can edit the station data, double clicking on it
+*   In the name field, you can insert any description you want
+*   You can insert the url of the station logo or leave it empty. You can even add logos to oirt/mw/sw stations in you want
+*   The "world" icon opens the preview of the Logo Repository of FM-DX-Webserver, where you can find many logos
+*   If you insert the Pi code and the ITU code of the station, clicking on the "research" icon will try to find the station logo
+*   The Antenna value defaults to 0 (no antenna change). You may add "1" if you want to automatically select the first antenna and "2" for the second antenna
 
 ### Toggle logos
 
