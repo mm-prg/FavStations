@@ -1838,7 +1838,8 @@
       name = dataPsElement.textContent.trim();
     }
 
-    const antenna = getCurrentAntennaValue();
+    // Default to '' (Don't change) when capturing station info
+    const antenna = '';
 
 let logo = logoEl && logoEl.src ? logoEl.src : '';
     if (logo === 'https://tef.noobish.eu/logos/default-logo.png') logo = '';
