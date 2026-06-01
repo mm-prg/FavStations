@@ -51,9 +51,12 @@ There is a line of temporary slots, useful for watching frequencies.
 
 ### Edit Station data
 
-<img width="570" height="326" alt="edit station page" src="https://github.com/user-attachments/assets/d25ff859-31a0-4704-a69e-4d2191b78fd3" />
+<img width="566" height="320" alt="edit station page" src="https://github.com/user-attachments/assets/187053a0-db29-4bdf-aa61-0d6767ecf97c" />
 
 * You can edit each station data, double clicking on it
+* You can insert any url of the station logo
+* The world icon opens the Logo Repository of FM-DX-Webserver
+* If you insert the Pi code and the ITU code of the station, clicking on the research icon will try to get automatically the station logo
 
 
 ### Settings Menu (⚙️ Gear Icon)
@@ -91,8 +94,10 @@ The plugin stores its data in:
 *   `localStorage`: Stores browser-specific preferences and cache.
 
 ## Credits
+
+*   Icons are linked from the Logo Repository of the FM-DX-Webserver: https://tef.noobish.eu/logos/logo_preview.html
 *   The logo search logic is derived from the wonderful plugin webserver-station-logos https://github.com/Highpoint2000/webserver-station-logos of the incredible Highpoint2000
-*   The linked Logo Repository is mantained here: https://tef.noobish.eu/logos/logo_preview.html
+
 
 ## Notes
 - Comments and suggestions are welcome! Thanks to anyone who tries the plugin and reports any bugs.
