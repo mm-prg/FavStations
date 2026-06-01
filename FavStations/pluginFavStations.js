@@ -1634,10 +1634,23 @@
 
     const antennaLabel = document.createElement('label');
     antennaLabel.textContent = 'Antenna';
-    const antennaInput = document.createElement('input');
-    antennaInput.value = s.antenna || '';
-    antennaInput.style.width = '100%';
-    antennaLabel.appendChild(antennaInput);
+    const antennaSelect = document.createElement('select');
+    antennaSelect.style.width = '100%';
+    antennaSelect.style.padding = '4px';
+    [
+      { v: '', t: 'Don\'t change' },
+      { v: '0', t: 'Go to Ant A' },
+      { v: '1', t: 'Go to Ant B' },
+      { v: '2', t: 'Go to Ant C' },
+      { v: '3', t: 'Go to Ant D' }
+    ].forEach(opt => {
+      const o = document.createElement('option');
+      o.value = opt.v;
+      o.textContent = opt.t;
+      if (String(s.antenna || '') === opt.v) o.selected = true;
+      antennaSelect.appendChild(o);
+    });
+    antennaLabel.appendChild(antennaSelect);
     form.appendChild(antennaLabel);
 
     const piInput = document.createElement('input');
@@ -1732,7 +1745,7 @@
       const item = {
         freq: String(freqInput.value || '').trim(),
         name: String(nameInput.value || '').trim(),
-        antenna: String(antennaInput.value || '').trim(),
+        antenna: String(antennaSelect.value || '').trim(),
         logo: String(logoInput.value || '').trim(),
         itu: String(ituInput.value || '').trim().toUpperCase(),
       };
