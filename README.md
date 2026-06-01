@@ -11,10 +11,8 @@ There is a line of temporary slots, useful for watching frequencies.
 
 *   **Multi-List Management:** Create, rename, delete, save, load and reorder multiple station lists.
 *   **Temporary slots:** Rapidly store frequencies on temporary slots, for easy monitoring
-*   **Drag & Drop UI:** Reorder station buttons simply by dragging them to your preferred position.
-*   **Smart Logo Integration:** 
-    *   Automatic logo search using PI Code, Station Name, and ITU.
-    *   Integrated **Logo Browser** to manually find icons in the official repository.
+*   **Drag & Drop Buttons:** Reorder station buttons simply by dragging them to your preferred position.
+*   **Smart Logo Integration:** Automatic logo search using PI Code, Station Name, and ITU.
 *   **Automatic loading of lists at startup:**
     *   **Server Mode:** Load stations from the local server JSON.
     *   **Remote Mode:** Sync your lists directly from a remote URL or GitHub (supports auto-conversion to raw links).
@@ -22,8 +20,6 @@ There is a line of temporary slots, useful for watching frequencies.
 *   **Customizable Interface:**
     *   **Visual Dimension Editor:** Resize buttons graphically as you like.
     *   **Temporary Slots:** Up to 30 temporary slots for quick, session-based tuning.
-    *   **Draggable Panels:** All settings and management windows can be moved around the screen.
-*   **Data Persistence:** Import and export your collections via JSON files for backup or sharing.
 *   **Admin Features:** Administrators can save global default configurations and lists directly to the server for all users.
 
 ## Installation
@@ -121,11 +117,11 @@ If you're logged as **administrator**, settings are saved on the server as defau
 *   **Startup Loading Mode:** Selecting "Server" means that the plugin loads a list saved on the server (you must have saved it before!). Select "Remote" if you want to load the list from a remote url. Select "Empty list" if don't want to load any list
 *   **Preloaded Stations Visibility:** You may choose to share your list to all users or not
 
-## Visual Editor for buttons dimensions
+## Visual Editor for button dimensions
 
 <img width="214" height="267" alt="visual editor" src="https://github.com/user-attachments/assets/fd6516d1-e5a0-44a9-9f97-caa941815226" />
 
-*   You can easily set the buttons dimensions with a visual editor
+*   You can easily set the button dimensions with a visual editor
 
 ## Credits
 
