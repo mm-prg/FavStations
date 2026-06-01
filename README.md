@@ -50,6 +50,9 @@ Follow these steps to install the plugin:
 *   **Add a new List:** Open the drop down menu and click on "+New List"
 
 ### Temporary Slots
+
+<img width="1124" height="57" alt="header" src="https://github.com/user-attachments/assets/1c63506f-a3bd-4c62-a63e-dcbe10522e99" />
+
 *   **Click:** Tune to the station frequency.
 *   **Ctrl + Click:** Overwrite the button with the currently tuned station's data (Frequency, Name, PI, etc.).
 *   **Right-Click / Long Press:** Open the context menu to edit or delete the station.
