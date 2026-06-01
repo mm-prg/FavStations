@@ -41,7 +41,7 @@ Follow these steps to install the plugin:
 ## Usage Guide
 
 ### Station Buttons
-*   **Add a new station:** Simpley click on the "+" button.
+*   **Add a new station:** Simpley click on the "+" button. You can freely mix fm, oirt, mw, sw stations
 *   **Click:** Tune to the station frequency.
 *   **Ctrl + Click:** Overwrite the button with the currently tuned station's data (Frequency, Name, PI, etc.).
 *   **Right-Click / Long Press:** Open the context menu to edit or delete the station.
@@ -59,11 +59,19 @@ Follow these steps to install the plugin:
 
 <img width="566" height="320" alt="edit station page" src="https://github.com/user-attachments/assets/187053a0-db29-4bdf-aa61-0d6767ecf97c" />
 
-* You can edit each station data, double clicking on it
-* You can insert any url of the station logo
-* The world icon opens the Logo Repository of FM-DX-Webserver
-* If you insert the Pi code and the ITU code of the station, clicking on the research icon will try to get automatically the station logo
+* You can edit the station data, double clicking on it
+* You can insert any description you want
+* You can insert the url of the station logo or leave it empty. You can even add logos to oirt/mw/sw stations in you want
+* The "world" icon opens the preview of the Logo Repository of FM-DX-Webserver, where you can find many logos
+* If you insert the Pi code and the ITU code of the station, clicking on the "research" icon will try to find the station logo
 
+### Toggle logos
+
+<img width="1020" height="194" alt="logo on" src="https://github.com/user-attachments/assets/8498be1a-a2ae-4045-b5bd-8c78a62dae62" />
+
+* In the gear menu, there's an option to toggle logos visibility, that shows the stations description
+  
+<img width="1013" height="186" alt="logo off" src="https://github.com/user-attachments/assets/592bb445-f061-473a-8460-27bf21da621c" />
 
 ### Settings Menu (⚙️ Gear Icon)
 
