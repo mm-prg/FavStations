@@ -101,39 +101,39 @@ Accessible next to the list selector, this menu allows you to:
 <img width="568" height="510" alt="list page" src="https://github.com/user-attachments/assets/8ec43df9-f843-4f74-af11-145ee00332eb" />
 
 In the **Manage Lists** panel:
+*   **Normal Users:**
 *   Use **Import/Export** to handle JSON local backups.
 *   Click **Reload** to refresh data based on your Startup Mode.
 *   Use the 🔼/🔽 arrows to change the order of lists in the main dropdown.
+*   **List Scrolling:** If you have many lists or stations, panels will automatically provide a scrollbar to remain usable.
+
 *   **Admin only:** View metadata of the loaded list (Origin, Source), Save to server, Load from server, Load from remote (useful if you want to use the same list for multiple servers)
 
 
 ### Edit Settings
-<img width="488" height="476" alt="settings page" src="https://github.com/user-attachments/assets/6cec5c87-ccbe-435b-a503-cea7ae0cb8b5" />
 
-If you're logged as **administrator**, you may edit the default settings for the server
+*   **Normal Users:** You can choose the number of slots and resize buttons as you like. Options are saved on the browser
+
+If you're logged as **administrator**, settings are saved on the server as default settings
+
+<img width="488" height="476" alt="settings page" src="https://github.com/user-attachments/assets/6cec5c87-ccbe-435b-a503-cea7ae0cb8b5" />
 
 *   **Startup Loading Mode:** Selecting "Server" means that the plugin loads a list saved on the server (you must have saved it before!). Select "Remote" if you want to load the list from a remote url. Select "Empty list" if don't want to load any list
 *   **Preloaded Stations Visibility:** You may choose to share your list to all users or not
 
-### Panels Navigation
-*   **Move Panels:** Click and drag the title bar of any window to move it.
-*   **Quick Close:** Press the `ESC` key or click outside a panel to close it.
-*   **List Scrolling:** If you have many lists or stations, panels will automatically provide a scrollbar to remain usable.
+## Visual Editor for buttons dimensions
 
-## Configuration Details
+<img width="214" height="267" alt="visual editor" src="https://github.com/user-attachments/assets/fd6516d1-e5a0-44a9-9f97-caa941815226" />
 
-The plugin stores its data in:
-*   `FavStations_data.json`: Contains the station lists (Server-side).
-*   `plugins_configs/FavStations.json`: Stores the global settings (Server-side).
-*   `localStorage`: Stores browser-specific preferences and cache.
+*   You can easily set the buttons dimensions with a visual editor
 
 ## Credits
 
-*   Icons are linked from the Logo Repository of the FM-DX-Webserver: https://tef.noobish.eu/logos/logo_preview.html
+*   Logos are linked from the Logo Repository of the FM-DX-Webserver: https://tef.noobish.eu/logos/logo_preview.html
 *   The logo search logic is derived from the wonderful plugin webserver-station-logos https://github.com/Highpoint2000/webserver-station-logos of the incredible Highpoint2000
 
 
 ## Notes
 - Comments and suggestions are welcome! Thanks to anyone who tries the plugin and reports any bugs.
   
-*Disclaimer: This plugin requires administrative privileges and an active internet connection to communicate with GitHub. The plugin is provided as is and without any guarantee. It is recommended to back up your data before performing any change.*
+*Disclaimer: The plugin is provided as is and without any guarantee. It is recommended to back up your data before performing any change.*
