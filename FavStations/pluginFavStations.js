@@ -661,6 +661,12 @@
           try {
             socket.send('T' + Math.round(Number(freq) * 1000));
             showToast(`Tuned ${tempSlots[si].freq}`);
+            // Send antenna command if specified
+            if (tempSlots[si].antenna === '1') {
+              socket.send('A1');
+            } else if (tempSlots[si].antenna === '2') {
+              socket.send('A2');
+            }
           } catch (err) { console.error('FavStations: tuning error', err); showToast(`Error tuning ${tempSlots[si].freq}`); }
         } else {
           try { await navigator.clipboard.writeText(String(tempSlots[si].freq)); showToast(`Copied ${tempSlots[si].freq}`); } catch (e) { showToast(String(tempSlots[si].freq)); }
@@ -950,6 +956,12 @@
         try {
           socket.send("T" + Math.round(Number(freq) * 1000));
           showToast(`Tuned ${st.freq}`);
+          // Send antenna command if specified
+          if (st.antenna === '1') {
+            socket.send('A1');
+          } else if (st.antenna === '2') {
+            socket.send('A2');
+          }
         } catch (err) {
           console.error('FavStations: tuning error', err);
           showToast(`Error tuning ${st.freq}`);
