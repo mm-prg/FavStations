@@ -40,25 +40,26 @@ There is a line of temporary slots, useful for watching frequencies.
 *   **Ctrl + Click:** Overwrite the button with the currently tuned station's data (Frequency, Name, PI, etc.).
 *   **Right-Click / Long Press:** Open the context menu to edit or delete the station.
 *   **Double-Click:** Open the station editor directly.
+*   **Select a List:** Click on dropdown list menu
 *   **Add a new List:** Open the drop down menu and click on "+New List"
 
 ### Temporary Slots
-
-
+*   **Click:** Tune to the station frequency.
+*   **Ctrl + Click:** Overwrite the button with the currently tuned station's data (Frequency, Name, PI, etc.).
+*   **Right-Click / Long Press:** Open the context menu to edit or delete the station.
+*   **Double-Click:** Open the station editor directly.
 
 ### Edit Station data
 
 <img width="570" height="326" alt="edit station page" src="https://github.com/user-attachments/assets/d25ff859-31a0-4704-a69e-4d2191b78fd3" />
 
-
 * You can edit each station data, double clicking on it
 
 
+### Settings Menu (⚙️ Gear Icon)
 
 <img width="488" height="476" alt="settings page" src="https://github.com/user-attachments/assets/6cec5c87-ccbe-435b-a503-cea7ae0cb8b5" />
 
-
-### Settings Menu (⚙️ Gear Icon)
 Accessible next to the list selector, this menu allows you to:
 *   **Manage Lists:** Open the management panel to organize your collections.
 *   **Edit Settings:** 
@@ -66,10 +67,11 @@ Accessible next to the list selector, this menu allows you to:
     *   **Admins:** Configure global startup modes and default visibility.
 *   **Toggle Logos:** Quickly show or hide station logos on buttons.
 
-<img width="568" height="510" alt="list page" src="https://github.com/user-attachments/assets/8ec43df9-f843-4f74-af11-145ee00332eb" />
-
 
 ### Manage Lists
+
+<img width="568" height="510" alt="list page" src="https://github.com/user-attachments/assets/8ec43df9-f843-4f74-af11-145ee00332eb" />
+
 In the **Manage Lists** panel:
 *   Use **Import/Export** to handle JSON backups.
 *   Click **Reload** to refresh data based on your Startup Mode.
@@ -88,12 +90,11 @@ The plugin stores its data in:
 *   `plugins_configs/FavStations.json`: Stores the global settings (Server-side).
 *   `localStorage`: Stores browser-specific preferences and cache.
 
-## Technical Information
+## Credits
+*   The logo search logic is derived from the wonderful plugin webserver-station-logos https://github.com/Highpoint2000/webserver-station-logos of the incredible Highpoint2000
+*   The linked Logo Repository is mantained here: https://tef.noobish.eu/logos/logo_preview.html
 
-*   **Version:** 0.0.20
-*   **Author:** mm-prg
-*   **Compatibility:** Optimized for modern browsers and FM-DX Webserver environments.
-*   **Logo Repository:** tef.noobish.eu
-
----
-*Developed for the FM-DX community.*
+## Notes
+- Comments and suggestions are welcome! Thanks to anyone who tries the plugin and reports any bugs.
+  
+*Disclaimer: This plugin requires administrative privileges and an active internet connection to communicate with GitHub. The plugin is provided as is and without any guarantee. It is recommended to back up your data before performing any change.*
