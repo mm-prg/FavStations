@@ -53,10 +53,14 @@ Follow these steps to install the plugin:
 
 <img width="1124" height="57" alt="header" src="https://github.com/user-attachments/assets/1c63506f-a3bd-4c62-a63e-dcbe10522e99" />
 
-*   **Click:** Tune to the station frequency.
-*   **Ctrl + Click:** Overwrite the button with the currently tuned station's data (Frequency, Name, PI, etc.).
-*   **Right-Click / Long Press:** Open the context menu to edit or delete the station.
-*   **Double-Click:** Open the station editor directly.
+* You may use up to 30 temporary slots for quick, session-based storing
+* It may be useful to store frequencies you're observing. 
+* If you made a list of local stations, you may also easily compare these frequencies, to find out if an unknown signal (without pi code) transmits the same signal.
+* I.e., if you have an unidentified signal, store it on a temporary slot. Then select your list of local stations: the temporary slots remain there. Now you can easily click/tune the unidentified station and the know local stations, to find out if they match. 
+
+*   **Click:** If the slot is empy, it stores the tuned frequency. If it contains a station, it tunes the station frequency.
+*   **Cross Icon:** To clears all slots
+
 
 ### Edit Station data
 
