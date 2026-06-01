@@ -74,14 +74,14 @@
     const found3 = !!document.getElementById('plugin-settings') || window.location.pathname.includes('/setup');
     isAdmin = found1 || found2 || found3;
 
-    console.log(`[FavStations] --- Admin Check ---`);
-    console.log(`[FavStations] Searching for: "${str1}" -> Found: ${found1}`);
-    console.log(`[FavStations] Searching for: "${str2}" -> Found: ${found2}`);
-    console.log(`[FavStations] Resulting isAdmin: ${isAdmin}`);
+//    console.log(`[FavStations] --- Admin Check ---`);
+//    console.log(`[FavStations] Searching for: "${str1}" -> Found: ${found1}`);
+//    console.log(`[FavStations] Searching for: "${str2}" -> Found: ${found2}`);
+//    console.log(`[FavStations] Resulting isAdmin: ${isAdmin}`);
     if (!isAdmin) {
       console.log(`[FavStations] Page Text Snippet: "${bodyText.substring(0, 250).replace(/\n/g, ' ')}..."`);
     }
-    console.log(`[FavStations] ------------------`);
+//    console.log(`[FavStations] ------------------`);
   }
 
   let tempSlots = [];
@@ -240,7 +240,7 @@
         // Check if data is wrapped in our new metadata format
         const parsed = (rawData && rawData.data && !Array.isArray(rawData.data)) ? rawData.data : rawData;
 
-        console.log(`FavStations: Imported stations from remote URL: ${url}`);
+        console.log(`FavStations: Imported stations from remote URL`);
         // Updates remote URL in configuration if changed
         if (url !== config.remoteStationsUrl) {
           config.remoteStationsUrl = url;
@@ -662,10 +662,11 @@
             socket.send('T' + Math.round(Number(freq) * 1000));
             showToast(`Tuned ${tempSlots[si].freq}`);
             // Send antenna command if specified
-            if (tempSlots[si].antenna === '1') {
-              socket.send('A1');
-            } else if (tempSlots[si].antenna === '2') {
-              socket.send('A2');
+            const ant = tempSlots[si].antenna;
+            if (ant !== '' && ant !== undefined && ant !== null) {
+              // In FM-DX Webserver '0' is Ant 1, '1' is Ant 2, etc.
+              // Command 'Z' is the standard for antenna switching
+              socket.send('Z' + ant);
             }
           } catch (err) { console.error('FavStations: tuning error', err); showToast(`Error tuning ${tempSlots[si].freq}`); }
         } else {
@@ -957,10 +958,10 @@
           socket.send("T" + Math.round(Number(freq) * 1000));
           showToast(`Tuned ${st.freq}`);
           // Send antenna command if specified
-          if (st.antenna === '1') {
-            socket.send('A1');
-          } else if (st.antenna === '2') {
-            socket.send('A2');
+          const ant = st.antenna;
+          if (ant !== '' && ant !== undefined && ant !== null) {
+            // Send 'Z' command with the 0-based index
+            socket.send('Z' + ant);
           }
         } catch (err) {
           console.error('FavStations: tuning error', err);
