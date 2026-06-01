@@ -28,9 +28,15 @@ There is a line of temporary slots, useful for watching frequencies.
 
 ## Installation
 
-1.  Place the `FavStations` folder into your FM-DX Webserver `plugins` directory.
-2.  Ensure `FavStations.js` and `pluginFavStations_server.js` are in the root of the plugin folder.
-3.  Restart your FM-DX Webserver.
+Follow these steps to install the plugin:
+
+1. Copy the `Updater.js` descriptor file into the `/plugins` directory of your FM-DX-Webserver.
+2. Copy the entire `Updater/` folder into the `/plugins` directory.
+3. Restart the FM-DX-Webserver.
+4. Log in to the administrator panel, enable the plugin in the Setup page, and save.
+5. Restart the FM-DX-Webserver one more time.
+
+- You may also use: https://github.com/mm-prg/Updater
 
 ## Usage Guide
 
