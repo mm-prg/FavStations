@@ -10,7 +10,7 @@ There is a line of temporary slots, useful for watching frequencies.
 ## Key Features
 
 *   **Multi-List Management:** Create, rename, delete, save, load and reorder multiple station lists.
-*   **Temporary slots:** Rapidly store frequencies on temporary slots, for easy watching
+*   **Temporary slots:** Rapidly store frequencies on temporary slots, for easy monitoring
 *   **Drag & Drop UI:** Reorder station buttons simply by dragging them to your preferred position.
 *   **Smart Logo Integration:** 
     *   Automatic logo search using PI Code, Station Name, and ITU.
@@ -39,8 +39,11 @@ Follow these steps to install the plugin:
 - You may also use: https://github.com/mm-prg/Updater
 
 ## Usage Guide
+You can make any list you want, as you like it. 
+A possibile use of lists is to create one "Local stations" list, with the stations always available, and more lists for dx reception, one for each direction. So you can easily check the frequencies stored for the selected direction to check if propagation is open for that direction
 
-### Station Buttons
+### Station Buttons and Lists
+
 *   **Add a new station:** Simply click on the "+" button. You can freely mix FM, OIRT, MW, SW stations
 *   **Click:** Tune to the station frequency.
 *   **Ctrl + Click:** Overwrite the button with the currently tuned station's data (Frequency, Name, PI, etc.).
@@ -48,18 +51,19 @@ Follow these steps to install the plugin:
 *   **Double-Click:** Open the station editor directly.
 *   **Select a List:** Click on the dropdown menu
 *   **Add a new List:** Open the dropdown menu and click on "+New List"
+*   **How to reorder buttons:** Drag the button and drop it in the place you want to put it
 
 ### Temporary Slots
 
 <img width="1124" height="57" alt="header" src="https://github.com/user-attachments/assets/1c63506f-a3bd-4c62-a63e-dcbe10522e99" />
 
 *   You may use up to 30 temporary slots for quick, session-based storage
-*   It may be useful to store frequencies you're observing. 
-*   If you made a list of local stations, you may also easily compare these frequencies to find out if an unknown signal (without pi code) transmits the same signal.
+*   Slots are useful for quickly storing frequencies you're monitoring
+*   If you make a list of local stations, you may also easily compare these frequencies to find out if an unknown signal (without pi code) transmits the same signal.
 *   I.e., if you have an unidentified signal, store it in a temporary slot. Then select your list of local stations: the temporary slots remain there. Now you can easily click/tune the unidentified station and the known local stations, to find out if they match. 
 
 *   **Click:** If the slot is empty, it stores the tuned frequency. If it contains a station, it tunes the station frequency.
-*   **Cross Icon:** To clear all slots
+*   **Cross Icon:** Clear all slots
 
 
 ### Edit Station data
@@ -82,9 +86,7 @@ Follow these steps to install the plugin:
   
 <img width="1013" height="186" alt="logo off" src="https://github.com/user-attachments/assets/592bb445-f061-473a-8460-27bf21da621c" />
 
-### Settings Menu (⚙️ Gear Icon)
-
-<img width="488" height="476" alt="settings page" src="https://github.com/user-attachments/assets/6cec5c87-ccbe-435b-a503-cea7ae0cb8b5" />
+### Options Menu (⚙️ Gear Icon)
 
 Accessible next to the list selector, this menu allows you to:
 *   **Manage Lists:** Open the management panel to organize your collections.
@@ -99,15 +101,24 @@ Accessible next to the list selector, this menu allows you to:
 <img width="568" height="510" alt="list page" src="https://github.com/user-attachments/assets/8ec43df9-f843-4f74-af11-145ee00332eb" />
 
 In the **Manage Lists** panel:
-*   Use **Import/Export** to handle JSON backups.
+*   Use **Import/Export** to handle JSON local backups.
 *   Click **Reload** to refresh data based on your Startup Mode.
 *   Use the 🔼/🔽 arrows to change the order of lists in the main dropdown.
-*   **Admin only:** View metadata (Origin, Source, Date) and save the current state as the server defaults.
+*   **Admin only:** View metadata of the loaded list (Origin, Source), Save to server, Load from server, Load from remote (useful if you want to use the same list for multiple servers)
 
-### UI Navigation
+
+### Edit Settings
+<img width="488" height="476" alt="settings page" src="https://github.com/user-attachments/assets/6cec5c87-ccbe-435b-a503-cea7ae0cb8b5" />
+
+If you're logged as **administrator**, you may edit the default settings for the server
+
+*   **Startup Loading Mode:** Selecting "Server" means that the plugin loads a list saved on the server (you must have saved it before!). Select "Remote" if you want to load the list from a remote url. Select "Empty list" if don't want to load any list
+*   **Preloaded Stations Visibility:** You may choose to share your list to all users or not
+
+### Panels Navigation
 *   **Move Panels:** Click and drag the title bar of any window to move it.
 *   **Quick Close:** Press the `ESC` key or click outside a panel to close it.
-*   **Scrolling:** If you have many lists or stations, panels will automatically provide a scrollbar to remain usable.
+*   **List Scrolling:** If you have many lists or stations, panels will automatically provide a scrollbar to remain usable.
 
 ## Configuration Details
 
