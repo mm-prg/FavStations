@@ -33,7 +33,7 @@ Follow these steps to install the plugin:
 1. Copy the `FavStations.js` descriptor file into the `/plugins` directory of your FM-DX-Webserver.
 2. Copy the entire `FavStations/` folder into the `/plugins` directory.
 3. Restart the FM-DX-Webserver.
-4. Log in to the administrator panel, enable the plugin in the Setup page, and save.
+4. Log in to the administrator panel, enable the plugin on the Setup page, and save.
 5. Restart the FM-DX-Webserver one more time.
 
 - You may also use: https://github.com/mm-prg/Updater
@@ -41,37 +41,38 @@ Follow these steps to install the plugin:
 ## Usage Guide
 
 ### Station Buttons
-*   **Add a new station:** Simply click on the "+" button. You can freely mix fm, oirt, mw, sw stations
+*   **Add a new station:** Simply click on the "+" button. You can freely mix FM, OIRT, MW, SW stations
 *   **Click:** Tune to the station frequency.
 *   **Ctrl + Click:** Overwrite the button with the currently tuned station's data (Frequency, Name, PI, etc.).
 *   **Right-Click / Long Press:** Open the context menu to edit or delete the station.
 *   **Double-Click:** Open the station editor directly.
-*   **Select a List:** Click on the dropdown list menu
-*   **Add a new List:** Open the drop down menu and click on "+New List"
+*   **Select a List:** Click on the dropdown menu
+*   **Add a new List:** Open the dropdown menu and click on "+New List"
 
 ### Temporary Slots
 
 <img width="1124" height="57" alt="header" src="https://github.com/user-attachments/assets/1c63506f-a3bd-4c62-a63e-dcbe10522e99" />
 
-*   You may use up to 30 temporary slots for quick, session-based storing
+*   You may use up to 30 temporary slots for quick, session-based storage
 *   It may be useful to store frequencies you're observing. 
-*   If you made a list of local stations, you may also easily compare these frequencies, to find out if an unknown signal (without pi code) transmits the same signal.
-*   I.e., if you have an unidentified signal, store it on a temporary slot. Then select your list of local stations: the temporary slots remain there. Now you can easily click/tune the unidentified station and the know local stations, to find out if they match. 
+*   If you made a list of local stations, you may also easily compare these frequencies to find out if an unknown signal (without pi code) transmits the same signal.
+*   I.e., if you have an unidentified signal, store it in a temporary slot. Then select your list of local stations: the temporary slots remain there. Now you can easily click/tune the unidentified station and the known local stations, to find out if they match. 
 
-*   **Click:** If the slot is empy, it stores the tuned frequency. If it contains a station, it tunes the station frequency.
-*   **Cross Icon:** To clears all slots
+*   **Click:** If the slot is empty, it stores the tuned frequency. If it contains a station, it tunes the station frequency.
+*   **Cross Icon:** To clear all slots
 
 
 ### Edit Station data
 
-<img width="566" height="320" alt="edit station page" src="https://github.com/user-attachments/assets/187053a0-db29-4bdf-aa61-0d6767ecf97c" />
+<img width="573" height="336" alt="edit station page" src="https://github.com/user-attachments/assets/9ea01107-99c0-4ab0-b835-698cb3a754bf" />
 
-*   You can edit the station data, double clicking on it
+*   You can edit the station data by double clicking on it
 *   In the name field, you can insert any description you want
-*   You can insert the url of the station logo or leave it empty. You can even add logos to oirt/mw/sw stations in you want
+*   You can insert the URL of the station logo or leave it empty. You can even add logos to OIRT/MW/SW stations if you want
 *   The "world" icon opens the preview of the Logo Repository of FM-DX-Webserver, where you can find many logos
 *   If you insert the Pi code and the ITU code of the station, clicking on the "research" icon will try to find the station logo
-*   The Antenna value defaults to 0 (no antenna change). You may add "1" if you want to automatically select the first antenna and "2" for the second antenna
+*   The default value for the antenna is "Don't change," indicating that tuning this station won't alter the antenna setting
+*   If you want to automatically use a particular antenna, select "Go to Ant A", etc
 
 ### Toggle logos
 
