@@ -78,7 +78,7 @@ Follow these steps to install the plugin:
 
 <img width="1020" height="194" alt="logo on" src="https://github.com/user-attachments/assets/8498be1a-a2ae-4045-b5bd-8c78a62dae62" />
 
-* In the gear menu, there's an option to toggle logos visibility, that shows frequencies and descriptions
+* In the gear menu, there's an option to toggle logo visibility. If you hide logos, frequencies and descriptions are shown
   
 <img width="1013" height="186" alt="logo off" src="https://github.com/user-attachments/assets/592bb445-f061-473a-8460-27bf21da621c" />
 
@@ -102,7 +102,7 @@ In the **Manage Lists** panel:
 *   Use **Import/Export** to handle JSON backups.
 *   Click **Reload** to refresh data based on your Startup Mode.
 *   Use the 🔼/🔽 arrows to change the order of lists in the main dropdown.
-*   **Admin only:** View metadata (Origin, Source, Date) and save the current state as the server default.
+*   **Admin only:** View metadata (Origin, Source, Date) and save the current state as the server defaults.
 
 ### UI Navigation
 *   **Move Panels:** Click and drag the title bar of any window to move it.
