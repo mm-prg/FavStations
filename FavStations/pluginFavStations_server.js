@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * FavStations Plugin for FM-DX Webserver (v0.1.0)
+ * FavStations Plugin for FM-DX Webserver (v0.2.0)
  * ************************************************
  */
 
