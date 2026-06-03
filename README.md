@@ -2,7 +2,8 @@
 
 **FavStations** is a station lists management plugin for the  [FM-DX Webserver](https://github.com/NoobishSVK/fm-dx-webserver).
 It allows users to organize stations into multiple lists, to save and load them (locally, from server or from a remote url), customize the interface, and quickly tune to stations with ease. 
-There is a line of temporary slots, useful for watching frequencies. 
+Additionally, there is a line of temporary slots that can be used for quick monitoring.
+- The Discord plugin page is: https://discord.com/channels/1053804249651359765/1233159920711368765/threads/1511049768472805477
 
 <img width="2642" height="722" alt="main page 2" src="https://github.com/user-attachments/assets/8b3feabd-7551-494f-bbd2-335f977b9e7d" />
 
@@ -137,5 +138,6 @@ If you're logged as **administrator**, settings are saved on the server as defau
 
 ## Notes
 - Comments and suggestions are welcome! Thanks to anyone who tries the plugin and reports any bugs.
+- If you like the plugin, please tell me on Discord: https://discord.com/channels/1053804249651359765/1233159920711368765/threads/1511049768472805477
   
 *Disclaimer: The plugin is provided as is and without any guarantee. It is recommended to back up your data before performing any change.*
