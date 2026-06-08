@@ -255,7 +255,8 @@
             antenna: item.antenna || '',
             logo: item.logo || '',
             itu: item.itu || '',
-            picode: item.picode || generateId()
+            picode: item.picode || generateId(),
+            streamUrl: item.streamUrl || '' // Added streamUrl
           }));
           stations = sane;
           listsObj[currentListName] = stations;
@@ -270,7 +271,8 @@
               antenna: item && item.antenna ? item.antenna : '',
               logo: item && item.logo ? item.logo : '',
               itu: item && item.itu ? item.itu : '',
-              picode: item && item.picode ? item.picode : generateId()
+              picode: item && item.streamUrl ? item.streamUrl : '', // Added streamUrl
+              streamUrl: item && item.streamUrl ? item.streamUrl : '' // Added streamUrl
             }));
           }
           listsObj = newLists;
@@ -327,7 +329,8 @@
             antenna: item.antenna || '',
             logo: item.logo || '',
             itu: item.itu || '',
-            picode: item.picode || generateId()
+            picode: item.picode || generateId(),
+            streamUrl: item.streamUrl || '' // Added streamUrl
           }));
           stations = sane;
           listsObj[currentListName] = stations;
@@ -342,7 +345,8 @@
               antenna: item && item.antenna ? item.antenna : '',
               logo: item && item.logo ? item.logo : '',
               itu: item && item.itu ? item.itu : '',
-              picode: item && item.picode ? item.picode : generateId()
+              picode: item && item.picode ? item.picode : generateId(),
+              streamUrl: item && item.streamUrl ? item.streamUrl : '' // Added streamUrl
             }));
           }
           listsObj = newLists;
@@ -648,7 +652,8 @@
           antenna: info.antenna || '',
           logo: info.logo || '',
           itu: info.itu || '',
-          picode: getPiCode() || generateId()
+          picode: getPiCode() || generateId(),
+          streamUrl: '' // New stations added this way won't have a stream URL initially
         };
         tempSlots[si] = item;
         renderTempSlots();
@@ -663,6 +668,10 @@
             showToast(`Tuned ${tempSlots[si].freq}`);
             // Send antenna command if specified
             const ant = tempSlots[si].antenna;
+            const stream = tempSlots[si].streamUrl;
+            if (stream) {
+              window.open(stream, '_blank'); // Open stream in new tab
+            }
             if (ant !== '' && ant !== undefined && ant !== null) {
               // In FM-DX Webserver '0' is Ant 1, '1' is Ant 2, etc.
               // Command 'Z' is the standard for antenna switching
@@ -675,7 +684,7 @@
       } else {
         // save current to slot
         const info = getCurrentStationInfo();
-        if (!info.freq) return showToast('No frequency to save');
+        if (!info.freq && !info.streamUrl) return showToast('No frequency or stream to save'); // Allow saving stream-only
         const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId() };
         tempSlots[si] = item;
         renderTempSlots();
@@ -692,12 +701,20 @@
         btnEl._longPressed = true;
         showStationContextMenu(x, y, {
           items: [
+            {
+              label: 'Play Stream',
+              action: () => {
+                if (data && data.streamUrl) window.open(data.streamUrl, '_blank');
+                else showToast('No stream URL defined for this station');
+              }
+            },
             { label: 'Edit station', action: () => openGenericEditor({ isTemp: true, index: slotIndex }) },
             { label: 'Delete station', action: () => { tempSlots[slotIndex] = null; renderTempSlots(); showToast(`Deleted slot ${slotIndex+1}`); } },
             { label: 'Copy current into this', action: () => {
-                const info = getCurrentStationInfo(); if (!info.freq) return showToast('No frequency to copy');
-                const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId() };
+                const info = getCurrentStationInfo(); if (!info.freq && !info.streamUrl) return showToast('No frequency or stream to copy');
+                const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId(), streamUrl: info.streamUrl || '' };
                 tempSlots[slotIndex] = item; renderTempSlots();
+                showToast(`Copied current to temp slot ${slotIndex+1}`);
             } }
           ]
         });
@@ -771,14 +788,15 @@
       btn.style.marginLeft = '6px';
       btn.onclick = async () => {
         const info = getCurrentStationInfo();
-        if (!info.freq) return showToast('No frequency to save');
+        if (!info.freq && !info.streamUrl) return showToast('No frequency or stream to save');
         const item = {
           freq: String(info.freq),
           name: info.name || '',
           antenna: info.antenna || '',
           logo: info.logo || '',
           itu: info.itu || '',
-          picode: getPiCode() || generateId()
+          picode: getPiCode() || generateId(),
+          streamUrl: info.streamUrl || '' // New stations added this way won't have a stream URL initially
         };
         stations.push(item);
         await persistStations();
@@ -869,7 +887,7 @@
     btn.style.color = '#fff';
 
     const tooltipText = `Station: ${st.freq} MHz\n${st.name || 'No Name'} (${st.itu || '??'})\nClick to tune. Ctrl+Click to update. Drag to reorder. Right-click to edit.`;
-    
+
     btn.addEventListener('mouseenter', () => showTip(btn, tooltipText));
     btn.addEventListener('mouseleave', hideTip);
     btn.addEventListener('mousedown', hideTip);
@@ -945,7 +963,8 @@
           antenna: info.antenna || '',
           logo: info.logo || '',
           itu: info.itu || '',
-          picode: getPiCode() || generateId()
+          picode: getPiCode() || generateId(),
+          streamUrl: info.streamUrl || ''
         };
         stations[idx] = item;
         await persistStations();
@@ -957,6 +976,9 @@
         try {
           socket.send("T" + Math.round(Number(freq) * 1000));
           showToast(`Tuned ${st.freq}`);
+          if (st.streamUrl) {
+            window.open(st.streamUrl, '_blank'); // Open stream in new tab
+          }
           // Send antenna command if specified
           const ant = st.antenna;
           if (ant !== '' && ant !== undefined && ant !== null) {
@@ -1045,11 +1067,18 @@
         btnEl._longPressed = true;
         showStationContextMenu(x, y, {
           items: [
+            {
+              label: 'Play Stream',
+              action: () => {
+                if (st.streamUrl) window.open(st.streamUrl, '_blank');
+                else showToast('No stream URL defined for this station');
+              }
+            },
             { label: 'Edit station', action: () => openGenericEditor({ index: index }) },
             { label: 'Delete station', action: async () => { stations.splice(index, 1); await persistStations(); renderButtons(); showToast('Deleted'); } },
             { label: 'Copy current into this', action: async () => {
-                const info = getCurrentStationInfo(); if (!info.freq) return showToast('No frequency to copy');
-                const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId() };
+                const info = getCurrentStationInfo(); if (!info.freq && !info.streamUrl) return showToast('No frequency or stream to copy');
+                const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId(), streamUrl: info.streamUrl || '' };
                 stations[index] = item; await persistStations(); renderButtons(); showToast(`Copied current to slot ${index+1}`);
             } }
           ]
@@ -1291,15 +1320,16 @@
         if (!file) return;
         try {
           const txt = await file.text();
-          const parsed = JSON.parse(txt);
-          if (Array.isArray(parsed)) {
-            const sane = parsed.map(item => ({ freq: item.freq ? String(item.freq) : '', name: item.name || '', antenna: item.antenna || '', logo: item.logo || '', itu: item.itu || '', picode: item.picode || generateId() }));
+          const rawData = JSON.parse(txt);
+          const dataToImport = (parsed && parsed.data && !Array.isArray(parsed.data)) ? parsed.data : parsed; // Handle metadata wrapper
+          if (Array.isArray(dataToImport)) {
+            const sane = dataToImport.map(item => ({ freq: item.freq ? String(item.freq) : '', name: item.name || '', antenna: item.antenna || '', logo: item.logo || '', itu: item.itu || '', picode: item.picode || generateId(), streamUrl: item.streamUrl || '' }));
             stations = sane; listsObj[currentListName] = stations;
-          } else if (parsed && typeof parsed === 'object') {
-            for (const [k, v] of Object.entries(parsed)) {
-              if (Array.isArray(v)) listsObj[k] = v.map(item => ({ freq: item && item.freq ? String(item.freq) : '', name: item && item.name ? item.name : '', antenna: item && item.antenna ? item.antenna : '', logo: item && item.logo ? item.logo : '', itu: item && item.itu ? item.itu : '', picode: item && item.picode ? item.picode : generateId() }));
+          } else if (dataToImport && typeof dataToImport === 'object') {
+            for (const [k, v] of Object.entries(dataToImport)) {
+              if (Array.isArray(v)) listsObj[k] = v.map(item => ({ freq: item && item.freq ? String(item.freq) : '', name: item && item.name ? item.name : '', antenna: item && item.antenna ? item.antenna : '', logo: item && item.logo ? item.logo : '', itu: item && item.itu ? item.itu : '', picode: item && item.picode ? item.picode : generateId(), streamUrl: item.streamUrl || '' }));
             }
-            if (Object.keys(listsObj).length > 0 && !listsObj[currentListName]) currentListName = Object.keys(listsObj)[0];
+            if (Object.keys(listsObj).length > 0 && !listsObj[currentListName]) currentListName = Object.keys(listsObj)[0]; // Ensure currentListName is valid
             stations = listsObj[currentListName] || [];
           }
           loadMetadata = { origin: 'Local File', source: file.name, date: new Date(file.lastModified).toLocaleString() };
@@ -1571,8 +1601,8 @@
   function openGenericEditor(opts = {}) {
     const { index = null, isTemp = false } = opts;
     const isNew = index === null;
-    const sourceArr = isTemp ? tempSlots : stations;
-    const s = !isNew ? sourceArr[index] : { freq: '', name: '', antenna: '', logo: '', picode: '', itu: '' };
+    const sourceArr = isTemp ? tempSlots : stations; // Use sourceArr for tempSlots or stations
+    const s = !isNew ? sourceArr[index] : { freq: '', name: '', antenna: '', logo: '', picode: '', itu: '', streamUrl: '' };
 
     const overlay = document.createElement('div');
     overlay.style.position = 'fixed';
@@ -1613,7 +1643,7 @@
 
     const form = document.createElement('div');
     form.style.display = 'grid';
-    form.style.gridTemplateColumns = '1fr 1fr';
+    form.style.gridTemplateColumns = '1fr 1fr'; // Default to two columns
     form.style.gap = '8px';
 
     const freqLabel = document.createElement('label');
@@ -1732,6 +1762,17 @@
     ituLabel.appendChild(ituInput);
     form.appendChild(ituLabel);
 
+    // Stream URL field (full width)
+    const streamUrlLabel = document.createElement('label');
+    streamUrlLabel.textContent = 'Stream URL';
+    streamUrlLabel.style.gridColumn = '1 / -1'; // Span full width
+    const streamUrlInput = document.createElement('input');
+    streamUrlInput.value = s.streamUrl || '';
+    streamUrlInput.style.width = '100%';
+    streamUrlInput.placeholder = 'https://... (e.g., MP3 stream)';
+    streamUrlLabel.appendChild(streamUrlInput);
+    form.appendChild(streamUrlLabel);
+
     box.appendChild(form);
 
     const actions = document.createElement('div');
@@ -1748,6 +1789,7 @@
         antenna: String(antennaSelect.value || '').trim(),
         logo: String(logoInput.value || '').trim(),
         itu: String(ituInput.value || '').trim().toUpperCase(),
+        streamUrl: String(streamUrlInput.value || '').trim(), // Capture stream URL
       };
       if (item.logo === 'https://tef.noobish.eu/logos/default-logo.png') item.logo = '';
       const inputPi = String(piInput.value || '').trim().toUpperCase();
@@ -1828,7 +1870,7 @@
     const dataStationNameElement = document.getElementById('data-station-name');
     const logoEl = document.getElementById('station-logo');
 
-    const freqText = dataFrequencyElement ? dataFrequencyElement.textContent.trim() : '';
+    const freqText = dataFrequencyElement ? dataFrequencyElement.textContent.trim() : ''; // Frequency is always from the tuner
     const freq = freqText || '';
 
     let name = '';
@@ -1841,11 +1883,12 @@
     // Default to '' (Don't change) when capturing station info
     const antenna = '';
 
-let logo = logoEl && logoEl.src ? logoEl.src : '';
+    let logo = logoEl && logoEl.src ? logoEl.src : '';
     if (logo === 'https://tef.noobish.eu/logos/default-logo.png') logo = '';
 
     const itu = getItuCode() || '';
-    return { freq, name, antenna, logo, itu };
+    const streamUrl = ''; // Stream URL is not typically derived from live tuner data
+    return { freq, name, antenna, logo, itu, streamUrl };
   }
 
   // Try to find Pi Code of the currently tuned station from page elements
