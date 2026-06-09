@@ -7,7 +7,7 @@
 "use strict";
  
 (() => {
-  const pluginVersion = '0.2.0';
+  const pluginVersion = '0.1.2';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -155,6 +155,43 @@
     }
   }
 
+  // Helper to open the stream in a small popup with a title
+  const playStream = (st) => {
+    if (!st) return;
+    const title = st.name || st.freq || 'Station';
+    let url = st.streamUrl;
+
+    if (!url) {
+      const q = (st.name || st.freq || '').trim();
+      if (!q) return showToast('No stream URL or name to search');
+      url = `https://fmstream.org/index.php?s=${encodeURIComponent(q)}`;
+    }
+
+    const win = window.open('', 'StationStream', 'width=450,height=300,menubar=no,toolbar=no,location=no,status=no,resizable=yes');
+    if (win) {
+      win.document.open();
+      win.document.write(`
+        <html>
+          <head>
+            <title>${title}</title>
+            <style>
+              body { margin: 0; background: #111; color: #eee; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+              .header { padding: 12px; background: #222; border-bottom: 1px solid #333; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index: 10; }
+              h2 { margin: 0; font-size: 18px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+              iframe { flex: 1; border: none; background: #000; width: 100%; height: 100%; }
+            </style>
+          </head>
+          <body>
+            <div class="header"><h2>${title}</h2></div>
+            <iframe src="${url}" allow="autoplay"></iframe>
+          </body>
+        </html>
+      `);
+      win.document.close();
+      showToast(st.streamUrl ? `Playing stream for ${title}` : `Searching stream for ${title}`);
+    }
+  };
+
   function getButtonDims() {
     if (config.buttonSize === 'custom' && config.customWidth && config.customHeight) {
       const w = config.customWidth;
@@ -271,7 +308,7 @@
               antenna: item && item.antenna ? item.antenna : '',
               logo: item && item.logo ? item.logo : '',
               itu: item && item.itu ? item.itu : '',
-              picode: item && item.streamUrl ? item.streamUrl : '', // Added streamUrl
+              picode: item && item.picode ? item.picode : generateId(),
               streamUrl: item && item.streamUrl ? item.streamUrl : '' // Added streamUrl
             }));
           }
@@ -583,7 +620,7 @@
 
     let tooltipText = `Temp Slot ${si + 1}:\n`;
     if (data) {
-        tooltipText += `${data.freq} MHz - ${data.name || 'Unnamed'}\nClick to tune. Ctrl+Click to overwrite. Right-click for options.`;
+        tooltipText += `${data.freq} MHz - ${data.name || 'Unnamed'}\nClick to tune. Alt+Click for stream. Ctrl+Click to overwrite. Right-click for options.`;
     } else {
         tooltipText += `Empty slot. Click to save the currently tuned station here for this session.`;
     }
@@ -660,6 +697,12 @@
         return showToast(`Temp slot ${si + 1} overwritten with current: ${item.freq}`);
       }
 
+      // Alt+Click to play stream
+      if (e.altKey && tempSlots[si]) {
+        playStream(tempSlots[si]);
+        return;
+      }
+
       if (tempSlots[si]) {
         const freq = parseFloat(tempSlots[si].freq);
         if (!isNaN(freq) && window.socket && socket.readyState === WebSocket.OPEN) {
@@ -668,10 +711,6 @@
             showToast(`Tuned ${tempSlots[si].freq}`);
             // Send antenna command if specified
             const ant = tempSlots[si].antenna;
-            const stream = tempSlots[si].streamUrl;
-            if (stream) {
-              window.open(stream, '_blank'); // Open stream in new tab
-            }
             if (ant !== '' && ant !== undefined && ant !== null) {
               // In FM-DX Webserver '0' is Ant 1, '1' is Ant 2, etc.
               // Command 'Z' is the standard for antenna switching
@@ -685,7 +724,7 @@
         // save current to slot
         const info = getCurrentStationInfo();
         if (!info.freq && !info.streamUrl) return showToast('No frequency or stream to save'); // Allow saving stream-only
-        const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId() };
+        const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId(), streamUrl: info.streamUrl || '' };
         tempSlots[si] = item;
         renderTempSlots();
       }
@@ -704,8 +743,7 @@
             {
               label: 'Play Stream',
               action: () => {
-                if (data && data.streamUrl) window.open(data.streamUrl, '_blank');
-                else showToast('No stream URL defined for this station');
+                playStream(data);
               }
             },
             { label: 'Edit station', action: () => openGenericEditor({ isTemp: true, index: slotIndex }) },
@@ -886,7 +924,7 @@
     btn.style.border = '1px solid #333';
     btn.style.color = '#fff';
 
-    const tooltipText = `Station: ${st.freq} MHz\n${st.name || 'No Name'} (${st.itu || '??'})\nClick to tune. Ctrl+Click to update. Drag to reorder. Right-click to edit.`;
+    const tooltipText = `Station: ${st.freq} MHz\n${st.name || 'No Name'} (${st.itu || '??'})\nClick to tune. Alt+Click for stream. Ctrl+Click to update. Drag to reorder. Right-click to edit.`;
 
     btn.addEventListener('mouseenter', () => showTip(btn, tooltipText));
     btn.addEventListener('mouseleave', hideTip);
@@ -971,14 +1009,18 @@
         renderButtons();
         return showToast(`Station overwritten with current: ${item.freq}`);
       }
+
+      // Alt+Click to play stream
+      if (e.altKey) {
+        playStream(st);
+        return;
+      }
+
       const freq = parseFloat(st.freq);
       if (!isNaN(freq) && window.socket && socket.readyState === WebSocket.OPEN) {
         try {
           socket.send("T" + Math.round(Number(freq) * 1000));
           showToast(`Tuned ${st.freq}`);
-          if (st.streamUrl) {
-            window.open(st.streamUrl, '_blank'); // Open stream in new tab
-          }
           // Send antenna command if specified
           const ant = st.antenna;
           if (ant !== '' && ant !== undefined && ant !== null) {
@@ -1070,8 +1112,7 @@
             {
               label: 'Play Stream',
               action: () => {
-                if (st.streamUrl) window.open(st.streamUrl, '_blank');
-                else showToast('No stream URL defined for this station');
+                playStream(st);
               }
             },
             { label: 'Edit station', action: () => openGenericEditor({ index: index }) },
@@ -1662,6 +1703,24 @@
     nameLabel.appendChild(nameInput);
     form.appendChild(nameLabel);
 
+    const piInput = document.createElement('input');
+    piInput.value = s.picode || '';
+    piInput.style.width = '100%';
+    piInput.oninput = () => { piInput.value = piInput.value.toUpperCase(); };
+    const piLabel = document.createElement('label');
+    piLabel.textContent = 'PI Code';
+    piLabel.appendChild(piInput);
+    form.appendChild(piLabel);
+
+    const ituInput = document.createElement('input');
+    ituInput.value = s.itu || '';
+    ituInput.style.width = '100%';
+    ituInput.oninput = () => { ituInput.value = ituInput.value.toUpperCase(); };
+    const ituLabel = document.createElement('label');
+    ituLabel.textContent = 'ITU Code';
+    ituLabel.appendChild(ituInput);
+    form.appendChild(ituLabel);
+
     const antennaLabel = document.createElement('label');
     antennaLabel.textContent = 'Antenna';
     const antennaSelect = document.createElement('select');
@@ -1682,16 +1741,6 @@
     });
     antennaLabel.appendChild(antennaSelect);
     form.appendChild(antennaLabel);
-
-    const piInput = document.createElement('input');
-    piInput.value = s.picode || '';
-    piInput.style.width = '100%';
-    piInput.oninput = () => { piInput.value = piInput.value.toUpperCase(); };
-
-    const ituInput = document.createElement('input');
-    ituInput.value = s.itu || '';
-    ituInput.style.width = '100%';
-    ituInput.oninput = () => { ituInput.value = ituInput.value.toUpperCase(); };
 
     const logoLabel = document.createElement('label');
     logoLabel.textContent = 'Logo (URL)';
@@ -1752,25 +1801,34 @@
     logoLabel.appendChild(logoInputContainer);
     form.appendChild(logoLabel);
 
-    const piLabel = document.createElement('label');
-    piLabel.textContent = 'PI Code';
-    piLabel.appendChild(piInput);
-    form.appendChild(piLabel);
-
-    const ituLabel = document.createElement('label');
-    ituLabel.textContent = 'ITU Code';
-    ituLabel.appendChild(ituInput);
-    form.appendChild(ituLabel);
-
     // Stream URL field (full width)
     const streamUrlLabel = document.createElement('label');
     streamUrlLabel.textContent = 'Stream URL';
     streamUrlLabel.style.gridColumn = '1 / -1'; // Span full width
+
+    const streamUrlContainer = document.createElement('div');
+    streamUrlContainer.style.display = 'flex';
+    streamUrlContainer.style.alignItems = 'center';
+    streamUrlContainer.style.gap = '4px';
+
     const streamUrlInput = document.createElement('input');
     streamUrlInput.value = s.streamUrl || '';
-    streamUrlInput.style.width = '100%';
+    streamUrlInput.style.flex = '1';
     streamUrlInput.placeholder = 'https://... (e.g., MP3 stream)';
-    streamUrlLabel.appendChild(streamUrlInput);
+    streamUrlContainer.appendChild(streamUrlInput);
+
+    const streamSearchBtn = document.createElement('button');
+    streamSearchBtn.type = 'button';
+    streamSearchBtn.textContent = '🔍';
+    streamSearchBtn.title = 'Search Stream: Open FMStream.org to find the stream for this station.';
+    streamSearchBtn.style.cssText = 'width:28px; height:28px; padding:0; font-size:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;';
+    streamSearchBtn.onclick = () => {
+      const q = (nameInput.value || freqInput.value).trim();
+      if (q) window.open(`https://fmstream.org/index.php?s=${encodeURIComponent(q)}`, '_blank');
+      else showToast('Enter name or frequency to search');
+    };
+    streamUrlContainer.appendChild(streamSearchBtn);
+    streamUrlLabel.appendChild(streamUrlContainer);
     form.appendChild(streamUrlLabel);
 
     box.appendChild(form);
