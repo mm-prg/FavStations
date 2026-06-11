@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * FavStations Plugin for FM-DX Webserver (v0.1.2)
+ * FavStations Plugin for FM-DX Webserver (v0.1.3)
  * ************************************************
  */
 
@@ -24,7 +24,7 @@ const configDir = path.resolve(__dirname, '../../plugins_configs');
 const configPath = path.join(configDir, 'FavStations.json');
 
 logInfo(`[FavStations] Config path set to: ${configPath}`);
- 
+
 function loadConfig() {
   try {
     if (!fs.existsSync(configPath)) {
@@ -187,7 +187,7 @@ const fetchRemoteData = (url, maxRedirects = 5) => {
       let body = '';
       res.on('data', chunk => body += chunk);
       res.on('end', () => {
-        try { 
+        try {
           const jsonData = JSON.parse(body);
           // GitHub e la maggior parte dei server usano 'last-modified'. Fallback su 'date' (ora del server remoto).
           let rawDate = res.headers['last-modified'] || res.headers['date'];
@@ -195,7 +195,7 @@ const fetchRemoteData = (url, maxRedirects = 5) => {
           if (rawDate) {
             lastModified = new Date(rawDate).toLocaleString();
           }
-          resolve({ data: jsonData, lastModified }); 
+          resolve({ data: jsonData, lastModified });
         }
         catch (e) { reject(new Error('Invalid JSON from remote')); }
       });

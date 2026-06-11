@@ -5,9 +5,9 @@
  */
 
 "use strict";
- 
+
 (() => {
-  const pluginVersion = '0.1.2';
+  const pluginVersion = '0.1.3';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -68,20 +68,20 @@
     const bodyText = document.body.textContent || document.body.innerText;
     const str1 = "You are logged in as an administrator.";
     const str2 = "You are logged in as an adminstrator."; // FM-DX typo compatibility
-    
+
     const found1 = bodyText.includes(str1);
     const found2 = bodyText.includes(str2);
     const found3 = !!document.getElementById('plugin-settings') || window.location.pathname.includes('/setup');
     isAdmin = found1 || found2 || found3;
 
-//    console.log(`[FavStations] --- Admin Check ---`);
-//    console.log(`[FavStations] Searching for: "${str1}" -> Found: ${found1}`);
-//    console.log(`[FavStations] Searching for: "${str2}" -> Found: ${found2}`);
-//    console.log(`[FavStations] Resulting isAdmin: ${isAdmin}`);
+    //    console.log(`[FavStations] --- Admin Check ---`);
+    //    console.log(`[FavStations] Searching for: "${str1}" -> Found: ${found1}`);
+    //    console.log(`[FavStations] Searching for: "${str2}" -> Found: ${found2}`);
+    //    console.log(`[FavStations] Resulting isAdmin: ${isAdmin}`);
     if (!isAdmin) {
       console.log(`[FavStations] Page Text Snippet: "${bodyText.substring(0, 250).replace(/\n/g, ' ')}..."`);
     }
-//    console.log(`[FavStations] ------------------`);
+    //    console.log(`[FavStations] ------------------`);
   }
 
   let tempSlots = [];
@@ -257,11 +257,11 @@
       if (inputUrl === null) return false;
       url = (inputUrl.trim()) || url;
     }
-    
+
     // Auto-convert standard GitHub URLs to Raw URLs
     if (url.includes('github.com') && !url.includes('gist.github.com')) {
       url = url.replace('github.com', 'raw.githubusercontent.com')
-               .replace(/\/(blob|raw)\//, '/');
+        .replace(/\/(blob|raw)\//, '/');
     }
 
     if (!silent) showToast('Fetching remote stations...');
@@ -283,7 +283,7 @@
           config.remoteStationsUrl = url;
           await persistConfig(); // No prompt here, it's an internal update
         }
-        
+
         if (Array.isArray(parsed)) {
           // Legacy format (single list)
           const sane = parsed.map(item => ({
@@ -530,7 +530,7 @@
       if (!val) return;
       if (val === '__new__') {
         // create new list from dropdown
-        let name = prompt('Name for new list:', `List ${new Date().toISOString().slice(0,19).replace('T',' ')}`);
+        let name = prompt('Name for new list:', `List ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`);
         if (name === null) return; // cancelled
         name = (String(name || '').trim()) || `List ${Date.now()}`;
         createNewList(name);
@@ -620,9 +620,9 @@
 
     let tooltipText = `Temp Slot ${si + 1}:\n`;
     if (data) {
-        tooltipText += `${data.freq} MHz - ${data.name || 'Unnamed'}\nClick to tune. Alt+Click for stream. Ctrl+Click to overwrite. Right-click for options.`;
+      tooltipText += `${data.freq} MHz - ${data.name || 'Unnamed'}\nClick to tune. Alt+Click for stream. Ctrl+Click to overwrite. Right-click for options.`;
     } else {
-        tooltipText += `Empty slot. Click to save the currently tuned station here for this session.`;
+      tooltipText += `Empty slot. Click to save the currently tuned station here for this session.`;
     }
 
     btn.addEventListener('mouseenter', () => showTip(btn, tooltipText));
@@ -747,13 +747,15 @@
               }
             },
             { label: 'Edit station', action: () => openGenericEditor({ isTemp: true, index: slotIndex }) },
-            { label: 'Delete station', action: () => { tempSlots[slotIndex] = null; renderTempSlots(); showToast(`Deleted slot ${slotIndex+1}`); } },
-            { label: 'Copy current into this', action: () => {
+            { label: 'Delete station', action: () => { tempSlots[slotIndex] = null; renderTempSlots(); showToast(`Deleted slot ${slotIndex + 1}`); } },
+            {
+              label: 'Copy current into this', action: () => {
                 const info = getCurrentStationInfo(); if (!info.freq && !info.streamUrl) return showToast('No frequency or stream to copy');
                 const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId(), streamUrl: info.streamUrl || '' };
                 tempSlots[slotIndex] = item; renderTempSlots();
-                showToast(`Copied current to temp slot ${slotIndex+1}`);
-            } }
+                showToast(`Copied current to temp slot ${slotIndex + 1}`);
+              }
+            }
           ]
         });
       }
@@ -764,10 +766,10 @@
         if (ev.button !== 0) return;
         pressTimer = setTimeout(() => {
           const rect = btnEl.getBoundingClientRect();
-          openMenuAt(rect.left + rect.width/2, rect.top + rect.height/2);
+          openMenuAt(rect.left + rect.width / 2, rect.top + rect.height / 2);
         }, LONG_PRESS_MS);
       });
-      ['mouseup','mouseleave'].forEach(n => btnEl.addEventListener(n, () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } }));
+      ['mouseup', 'mouseleave'].forEach(n => btnEl.addEventListener(n, () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } }));
       btnEl.addEventListener('touchstart', (ev) => {
         pressTimer = setTimeout(() => {
           const touch = ev.touches && ev.touches[0];
@@ -1117,11 +1119,13 @@
             },
             { label: 'Edit station', action: () => openGenericEditor({ index: index }) },
             { label: 'Delete station', action: async () => { stations.splice(index, 1); await persistStations(); renderButtons(); showToast('Deleted'); } },
-            { label: 'Copy current into this', action: async () => {
+            {
+              label: 'Copy current into this', action: async () => {
                 const info = getCurrentStationInfo(); if (!info.freq && !info.streamUrl) return showToast('No frequency or stream to copy');
                 const item = { freq: String(info.freq), name: info.name || '', antenna: info.antenna || '', logo: info.logo || '', itu: info.itu || '', picode: getPiCode() || generateId(), streamUrl: info.streamUrl || '' };
-                stations[index] = item; await persistStations(); renderButtons(); showToast(`Copied current to slot ${index+1}`);
-            } }
+                stations[index] = item; await persistStations(); renderButtons(); showToast(`Copied current to slot ${index + 1}`);
+              }
+            }
           ]
         });
       }
@@ -1134,10 +1138,10 @@
         if (ev.button !== 0) return;
         pressTimer = setTimeout(() => {
           const rect = btnEl.getBoundingClientRect();
-          openMenuAt(rect.left + rect.width/2, rect.top + rect.height/2);
+          openMenuAt(rect.left + rect.width / 2, rect.top + rect.height / 2);
         }, LONG_PRESS_MS);
       });
-      ['mouseup','mouseleave'].forEach(n => btnEl.addEventListener(n, () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } }));
+      ['mouseup', 'mouseleave'].forEach(n => btnEl.addEventListener(n, () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } }));
       btnEl.addEventListener('touchstart', (ev) => {
         pressTimer = setTimeout(() => {
           const touch = ev.touches && ev.touches[0];
@@ -1174,19 +1178,19 @@
             listsObj = serverLists;
 
             if (forceServer) {
-                // Quando forziamo il caricamento dal server, mostriamo i dati del file locale
-                loadMetadata = { 
-                    origin: 'Server', 
-                    source: 'FavStations_data.json', 
-                    date: result.serverDate || metadata.date || 'N/A' 
-                };
+              // Quando forziamo il caricamento dal server, mostriamo i dati del file locale
+              loadMetadata = {
+                origin: 'Server',
+                source: 'FavStations_data.json',
+                date: result.serverDate || metadata.date || 'N/A'
+              };
             } else {
-                // Caricamento normale (es. all'avvio): preserviamo la genealogia originale dei dati
-                loadMetadata = { 
-                    origin: metadata.origin || 'Server', 
-                    source: metadata.source || 'FavStations_data.json', 
-                    date: metadata.date || 'N/A' 
-                };
+              // Caricamento normale (es. all'avvio): preserviamo la genealogia originale dei dati
+              loadMetadata = {
+                origin: metadata.origin || 'Server',
+                source: metadata.source || 'FavStations_data.json',
+                date: metadata.date || 'N/A'
+              };
             }
 
             console.log('FavStations: Loaded station lists from server (/plugins/FavStations/list)');
@@ -1342,7 +1346,7 @@
     addBtn.style.cssText = btnStyle;
     addBtn.title = 'Create a new empty collection of stations.';
     addBtn.onclick = () => {
-      let name = prompt('Enter a name for the new list:', `List ${new Date().toISOString().slice(0,10)}`);
+      let name = prompt('Enter a name for the new list:', `List ${new Date().toISOString().slice(0, 10)}`);
       if (name === null) return;
       createNewList(name);
       renderListManager(); // Refresh this panel
@@ -1820,16 +1824,182 @@
     const streamSearchBtn = document.createElement('button');
     streamSearchBtn.type = 'button';
     streamSearchBtn.textContent = '🔍';
-    streamSearchBtn.title = 'Search Stream: Open FMStream.org to find the stream for this station.';
+    streamSearchBtn.title = 'Search Stream: Choose a website to search for the stream of this station.';
     streamSearchBtn.style.cssText = 'width:28px; height:28px; padding:0; font-size:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;';
-    streamSearchBtn.onclick = () => {
+    const searchResultsPanel = document.createElement('div');
+    searchResultsPanel.id = 'favstations-stream-search-results';
+    searchResultsPanel.style.display = 'none';
+    searchResultsPanel.style.gridColumn = '1 / -1';
+    searchResultsPanel.style.marginTop = '8px';
+    searchResultsPanel.style.padding = '8px';
+    searchResultsPanel.style.borderRadius = '6px';
+    searchResultsPanel.style.background = '#f9f9f9';
+    searchResultsPanel.style.border = '1px solid #e0e0e0';
+    searchResultsPanel.style.maxHeight = '180px';
+    searchResultsPanel.style.overflowY = 'auto';
+    searchResultsPanel.style.fontSize = '12px';
+    searchResultsPanel.style.color = '#333';
+    searchResultsPanel.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.05)';
+
+    async function performAutoSearch(query) {
+      searchResultsPanel.style.display = 'block';
+      searchResultsPanel.innerHTML = '<div style="padding: 10px; text-align: center; color: #666;">🔍 Searching Radio-Browser database...</div>';
+      searchResultsPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+      const rbServers = [
+        'https://de1.api.radio-browser.info',
+        'https://nl1.api.radio-browser.info',
+        'https://at1.api.radio-browser.info'
+      ];
+
+      const servers = [...rbServers].sort(() => Math.random() - 0.5);
+      let data = null;
+
+      for (const server of servers) {
+        try {
+          const url = `${server}/json/stations/search?name=${encodeURIComponent(query)}&limit=6&hidebroken=true`;
+          const res = await fetch(url);
+          if (res.ok) {
+            data = await res.json();
+            if (data && data.length > 0) {
+              break;
+            }
+          }
+        } catch (e) {
+          console.warn(`[FavStations] Failed to fetch from mirror ${server}:`, e);
+        }
+      }
+
+      if (!data || data.length === 0) {
+        searchResultsPanel.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px;">
+            <span style="color: #c0392b; font-weight: bold;">No streams found on Radio-Browser.</span>
+            <button type="button" style="padding: 2px 6px; cursor: pointer; font-size: 11px; background:#fff; border:1px solid #ccc; border-radius:3px;" id="favstations-close-search">Close</button>
+          </div>
+        `;
+        const closeBtn = searchResultsPanel.querySelector('#favstations-close-search');
+        if (closeBtn) closeBtn.onclick = () => { searchResultsPanel.style.display = 'none'; };
+        return;
+      }
+
+      searchResultsPanel.innerHTML = '';
+
+      const header = document.createElement('div');
+      header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 6px;';
+      header.innerHTML = `
+        <span>Select stream to import:</span>
+        <button type="button" style="padding: 2px 6px; cursor: pointer; font-size: 11px; background:#fff; border:1px solid #ccc; border-radius:3px;" id="favstations-close-search">Close</button>
+      `;
+      searchResultsPanel.appendChild(header);
+
+      const closeBtn = header.querySelector('#favstations-close-search');
+      if (closeBtn) closeBtn.onclick = () => { searchResultsPanel.style.display = 'none'; };
+
+      const listContainer = document.createElement('div');
+      listContainer.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
+
+      data.forEach(item => {
+        const itemRow = document.createElement('div');
+        itemRow.style.cssText = 'padding: 6px; border-radius: 4px; border: 1px solid #eee; background: #fff; cursor: pointer; transition: background 0.15s; display: flex; flex-direction: column; gap: 2px;';
+
+        itemRow.onmouseenter = () => { itemRow.style.background = '#f0f7ff'; itemRow.style.borderColor = '#a3d2ff'; };
+        itemRow.onmouseleave = () => { itemRow.style.background = '#fff'; itemRow.style.borderColor = '#eee'; };
+
+        const titleSpan = document.createElement('span');
+        titleSpan.style.cssText = 'font-weight: 600; color: #2c3e50;';
+        titleSpan.textContent = item.name;
+
+        const infoSpan = document.createElement('span');
+        infoSpan.style.cssText = 'font-size: 11px; color: #7f8c8d;';
+        const bitrateInfo = item.bitrate ? `${item.bitrate}kbps` : '';
+        const codecInfo = item.codec ? item.codec.toUpperCase() : '';
+        const streamDetails = [codecInfo, bitrateInfo].filter(Boolean).join(' @ ');
+
+        const countryInfo = item.country || '';
+        const genresInfo = item.tags ? item.tags.split(',').slice(0, 3).join(', ') : '';
+        const detailsArray = [streamDetails, countryInfo, genresInfo].filter(Boolean);
+        infoSpan.textContent = detailsArray.join(' | ');
+
+        itemRow.appendChild(titleSpan);
+        itemRow.appendChild(infoSpan);
+
+        itemRow.onclick = () => {
+          if (item.url_resolved) {
+            streamUrlInput.value = item.url_resolved;
+            showToast('Stream URL imported');
+          }
+          if (item.favicon && !logoInput.value) {
+            logoInput.value = item.favicon;
+            showToast('Logo imported');
+          }
+          if (item.countrycode && !ituInput.value) {
+            let resolvedItu = item.countrycode.toUpperCase();
+            if (Array.isArray(window.countryList)) {
+              const matchedCountry = window.countryList.find(c => c.country_code === item.countrycode.toUpperCase());
+              if (matchedCountry && matchedCountry.itu_code) {
+                resolvedItu = matchedCountry.itu_code;
+              }
+            }
+            ituInput.value = resolvedItu;
+            showToast(`ITU Code (${resolvedItu}) imported`);
+          }
+          searchResultsPanel.style.display = 'none';
+        };
+
+        listContainer.appendChild(itemRow);
+      });
+
+      searchResultsPanel.appendChild(listContainer);
+    }
+
+    streamSearchBtn.onclick = (ev) => {
+      ev.stopPropagation();
       const q = (nameInput.value || freqInput.value).trim();
-      if (q) window.open(`https://fmstream.org/index.php?s=${encodeURIComponent(q)}`, '_blank');
-      else showToast('Enter name or frequency to search');
+      if (!q) return showToast('Enter name or frequency to search');
+
+      const rect = streamSearchBtn.getBoundingClientRect();
+      showStationContextMenu(rect.left, rect.bottom + 5, {
+        items: [
+          {
+            label: '🔍 Auto-search & Import URL',
+            action: () => performAutoSearch(nameInput.value || q),
+            tooltip: 'Search public databases and import streaming URL directly'
+          },
+          {
+            label: 'FMStream.org',
+            action: () => window.open(`https://fmstream.org/index.php?s=${encodeURIComponent(q)}`, '_blank'),
+            tooltip: 'Search streaming URLs on FMStream.org'
+          },
+          {
+            label: 'Radio-Browser.info',
+            action: () => window.open(`https://www.radio-browser.info/#/search?name=${encodeURIComponent(nameInput.value || q)}`, '_blank'),
+            tooltip: 'Search on Radio-Browser database'
+          },
+          {
+            label: 'OnlineRadioBox.com',
+            action: () => window.open(`https://onlineradiobox.com/search?q=${encodeURIComponent(nameInput.value || q)}`, '_blank'),
+            tooltip: 'Search on OnlineRadioBox'
+          },
+          {
+            label: 'FMScan.org',
+            action: () => window.open(`https://fmscan.org/net.php?r=f&q=${encodeURIComponent(nameInput.value || q)}`, '_blank'),
+            tooltip: 'Search transmitter networks on FMScan'
+          },
+          {
+            label: 'Google Search',
+            action: () => {
+              const googleQuery = `${q} radio stream live url`;
+              window.open(`https://www.google.com/search?q=${encodeURIComponent(googleQuery)}`, '_blank');
+            },
+            tooltip: 'Google search for live stream URLs'
+          }
+        ]
+      });
     };
     streamUrlContainer.appendChild(streamSearchBtn);
     streamUrlLabel.appendChild(streamUrlContainer);
     form.appendChild(streamUrlLabel);
+    form.appendChild(searchResultsPanel);
 
     box.appendChild(form);
 
@@ -1861,7 +2031,7 @@
       } else {
         // Regular station
         if (!isNew) {
-        // editing: use provided Pi code if any, otherwise preserve existing or generate
+          // editing: use provided Pi code if any, otherwise preserve existing or generate
           if (inputPi) item.picode = inputPi; else item.picode = sourceArr[index] && sourceArr[index].picode ? sourceArr[index].picode : generateId();
           sourceArr[index] = item;
         } else {
@@ -1951,7 +2121,7 @@
 
   // Try to find Pi Code of the currently tuned station from page elements
   function getPiCode() {
-    const ids = ['data-pi','data-picode','data-pi-code','data-station-pi','station-pi','data-station-code','data-station-id','data-id'];
+    const ids = ['data-pi', 'data-picode', 'data-pi-code', 'data-station-pi', 'station-pi', 'data-station-code', 'data-station-id', 'data-id'];
     for (const id of ids) {
       const el = document.getElementById(id);
       if (el && el.textContent && el.textContent.trim()) return el.textContent.trim();
@@ -1987,102 +2157,102 @@
 
   // Function to fetch the directory index of a given ITU code (cached for the session only)
   async function getRemoteDirectoryIndex(ituCode) {
-      if (sessionRemoteDirCache[ituCode]) {
-          return sessionRemoteDirCache[ituCode];
+    if (sessionRemoteDirCache[ituCode]) {
+      return sessionRemoteDirCache[ituCode];
+    }
+
+    try {
+      const response = await fetch(`${TEF_SERVER_PATH}${ituCode}/`);
+      if (!response.ok) {
+        console.warn(`[FavStations] Failed to fetch directory for ${ituCode}`);
+        return [];
       }
 
-      try {
-          const response = await fetch(`${TEF_SERVER_PATH}${ituCode}/`);
-          if (!response.ok) {
-              console.warn(`[FavStations] Failed to fetch directory for ${ituCode}`);
-              return [];
-          }
+      const html = await response.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
 
-          const html = await response.text();
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(html, 'text/html');
-          
-          const links = Array.from(doc.querySelectorAll('a'))
-                             .map(a => a.getAttribute('href'))
-                             .filter(href => href && (href.toLowerCase().endsWith('.svg') || href.toLowerCase().endsWith('.png')));
-          
-          const decodedLinks = links.map(link => {
-              let cleanLink = link.split('?')[0]; 
-              cleanLink = cleanLink.split('/').pop(); 
-              return decodeURIComponent(cleanLink).trim(); 
-          });
+      const links = Array.from(doc.querySelectorAll('a'))
+        .map(a => a.getAttribute('href'))
+        .filter(href => href && (href.toLowerCase().endsWith('.svg') || href.toLowerCase().endsWith('.png')));
 
-          sessionRemoteDirCache[ituCode] = decodedLinks;
-          console.log(`[FavStations] Loaded ${decodedLinks.length} files for ITU: ${ituCode} for this browser session.`);
-          return decodedLinks;
+      const decodedLinks = links.map(link => {
+        let cleanLink = link.split('?')[0];
+        cleanLink = cleanLink.split('/').pop();
+        return decodeURIComponent(cleanLink).trim();
+      });
 
-      } catch (err) {
-          console.error(`[FavStations] Error fetching directory index for ${ituCode}:`, err);
-          return [];
-      }
+      sessionRemoteDirCache[ituCode] = decodedLinks;
+      console.log(`[FavStations] Loaded ${decodedLinks.length} files for ITU: ${ituCode} for this browser session.`);
+      return decodedLinks;
+
+    } catch (err) {
+      console.error(`[FavStations] Error fetching directory index for ${ituCode}:`, err);
+      return [];
+    }
   }
 
   // Function to get country name from ITU code (assuming window.countryList is available)
   function getCountryNameByItuCode(ituCode) {
-      if (!Array.isArray(window.countryList)) return ""; // Return empty if list not available
-      
-      const country = window.countryList.find(
-        item => item.itu_code === ituCode.toUpperCase()
-      );
-      return country ? country.country : "";
+    if (!Array.isArray(window.countryList)) return ""; // Return empty if list not available
+
+    const country = window.countryList.find(
+      item => item.itu_code === ituCode.toUpperCase()
+    );
+    return country ? country.country : "";
   }
 
   // Function to compare program name with image titles for onlineradiobox
   function compareAndSelectImage(currentStationName, imgSrcElements) {
-      let selectedImgSrc = null;
+    let selectedImgSrc = null;
 
-      const lowerStationName = currentStationName.toLowerCase();
-      for (const imgSrcElement of imgSrcElements) {
-          const title = imgSrcElement.getAttribute('title');
-          if (!title) continue;
-          const lowerTitle = title.toLowerCase();
+    const lowerStationName = currentStationName.toLowerCase();
+    for (const imgSrcElement of imgSrcElements) {
+      const title = imgSrcElement.getAttribute('title');
+      if (!title) continue;
+      const lowerTitle = title.toLowerCase();
 
-          if (lowerTitle === lowerStationName) { // Exact match
-              selectedImgSrc = imgSrcElement.getAttribute('src');
-              break;
-          }
-          if (lowerTitle.includes(lowerStationName) || lowerStationName.includes(lowerTitle)) { // Substring match
-              if (!selectedImgSrc) { // Take the first plausible match
-                  selectedImgSrc = imgSrcElement.getAttribute('src');
-              }
-          }
+      if (lowerTitle === lowerStationName) { // Exact match
+        selectedImgSrc = imgSrcElement.getAttribute('src');
+        break;
       }
-
-      if (selectedImgSrc && !selectedImgSrc.startsWith('https://')) {
-          selectedImgSrc = 'https:' + selectedImgSrc;
+      if (lowerTitle.includes(lowerStationName) || lowerStationName.includes(lowerTitle)) { // Substring match
+        if (!selectedImgSrc) { // Take the first plausible match
+          selectedImgSrc = imgSrcElement.getAttribute('src');
+        }
       }
-      return selectedImgSrc;
+    }
+
+    if (selectedImgSrc && !selectedImgSrc.startsWith('https://')) {
+      selectedImgSrc = 'https:' + selectedImgSrc;
+    }
+    return selectedImgSrc;
   }
 
   // Function to parse a page, search for logos, and handle results from onlineradiobox
   async function parseOnlineradioboxPage(url, stationName) {
-      try {
-          const response = await fetch(`${CORS_PROXY_URL}${url}`);
-          if (!response.ok) throw new Error('Network response was not ok.');
+    try {
+      const response = await fetch(`${CORS_PROXY_URL}${url}`);
+      if (!response.ok) throw new Error('Network response was not ok.');
 
-          const html = await response.text();
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(html, 'text/html');
-          const imgSrcElements = doc.querySelectorAll('img[class="station__title__logo"]');
+      const html = await response.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const imgSrcElements = doc.querySelectorAll('img[class="station__title__logo"]');
 
-          const selectedImgSrc = compareAndSelectImage(stationName, imgSrcElements);
+      const selectedImgSrc = compareAndSelectImage(stationName, imgSrcElements);
 
-          if (selectedImgSrc) {
-              console.log('[FavStations] Selected image source from OnlineRadioBox:', selectedImgSrc);
-              return selectedImgSrc;
-          } else {
-              console.log('[FavStations] No logo found on OnlineRadioBox for:', stationName);
-              return null;
-          }
-      } catch (error) {
-          console.error('[FavStations] Error fetching from OnlineRadioBox:', error.message);
-          return null;
+      if (selectedImgSrc) {
+        console.log('[FavStations] Selected image source from OnlineRadioBox:', selectedImgSrc);
+        return selectedImgSrc;
+      } else {
+        console.log('[FavStations] No logo found on OnlineRadioBox for:', stationName);
+        return null;
       }
+    } catch (error) {
+      console.error('[FavStations] Error fetching from OnlineRadioBox:', error.message);
+      return null;
+    }
   }
 
   // Try to derive a logo URL from station metadata using standard repository patterns
@@ -2099,79 +2269,79 @@
     const now = Date.now();
 
     if (cachedLogoDataStr) {
-        try {
-            const cachedData = JSON.parse(cachedLogoDataStr);
-            if (now - cachedData.timestamp < LOGO_CACHE_EXPIRY_MS) {
-                if (cachedData.url && cachedData.url !== "DEFAULT") {
-                    console.log(`[FavStations] Using 7-day cached URL: ${cachedData.url}`);
-                    return cachedData.url;
-                } else if (cachedData.url === "DEFAULT") {
-                    console.log(`[FavStations] Known missing logo for this station (cached state).`);
-                    return ''; // Explicitly cached as not found
-                }
-            } else {
-                localStorage.removeItem(cacheKey); // Cache expired
-            }
-        } catch (e) {
-            console.error('[FavStations] Error parsing cached logo data, clearing cache.', e);
-            localStorage.removeItem(cacheKey);
+      try {
+        const cachedData = JSON.parse(cachedLogoDataStr);
+        if (now - cachedData.timestamp < LOGO_CACHE_EXPIRY_MS) {
+          if (cachedData.url && cachedData.url !== "DEFAULT") {
+            console.log(`[FavStations] Using 7-day cached URL: ${cachedData.url}`);
+            return cachedData.url;
+          } else if (cachedData.url === "DEFAULT") {
+            console.log(`[FavStations] Known missing logo for this station (cached state).`);
+            return ''; // Explicitly cached as not found
+          }
+        } else {
+          localStorage.removeItem(cacheKey); // Cache expired
         }
+      } catch (e) {
+        console.error('[FavStations] Error parsing cached logo data, clearing cache.', e);
+        localStorage.removeItem(cacheKey);
+      }
     }
 
     let foundLogoUrl = '';
 
     // 1. Try tef.noobish.eu (using PI Code and ITU)
     if (itu && picode) {
-        const formattedProgram = stationName.toUpperCase().replace(/[\/\-\*\+\:\.\,\§\%\&\"!\?\|\>\<\=\)\(\[\]´`'~#\s]/g, '');
-        const cleanPiCode = picode;
+      const formattedProgram = stationName.toUpperCase().replace(/[\/\-\*\+\:\.\,\§\%\&\"!\?\|\>\<\=\)\(\[\]´`'~#\s]/g, '');
+      const cleanPiCode = picode;
 
-        const priorityFiles = [
-            `${cleanPiCode}_${formattedProgram}.svg`,
-            `${cleanPiCode}_${formattedProgram}.png`,
-            `${cleanPiCode}.svg`,
-            `${cleanPiCode}.png`
-        ];
+      const priorityFiles = [
+        `${cleanPiCode}_${formattedProgram}.svg`,
+        `${cleanPiCode}_${formattedProgram}.png`,
+        `${cleanPiCode}.svg`,
+        `${cleanPiCode}.png`
+      ];
 
-        try {
-            const dirFiles = await getRemoteDirectoryIndex(itu);
-            for (const fileName of priorityFiles) {
-                const foundFile = dirFiles.find(f => f.toLowerCase() === fileName.toLowerCase());
-                if (foundFile) {
-                    foundLogoUrl = `${TEF_SERVER_PATH}${itu}/${foundFile}`;
-                    console.log(`[FavStations] Found logo on tef.noobish.eu: ${foundLogoUrl}`);
-                    break;
-                }
-            }
-        } catch (e) {
-            console.error('[FavStations] Error searching tef.noobish.eu:', e);
+      try {
+        const dirFiles = await getRemoteDirectoryIndex(itu);
+        for (const fileName of priorityFiles) {
+          const foundFile = dirFiles.find(f => f.toLowerCase() === fileName.toLowerCase());
+          if (foundFile) {
+            foundLogoUrl = `${TEF_SERVER_PATH}${itu}/${foundFile}`;
+            console.log(`[FavStations] Found logo on tef.noobish.eu: ${foundLogoUrl}`);
+            break;
+          }
         }
+      } catch (e) {
+        console.error('[FavStations] Error searching tef.noobish.eu:', e);
+      }
     }
 
     if (foundLogoUrl) {
-        localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, url: foundLogoUrl }));
-        return foundLogoUrl;
+      localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, url: foundLogoUrl }));
+      return foundLogoUrl;
     }
 
     // 2. Try onlineradiobox.com (using Station Name and ITU)
     if (stationName && itu) {
-        const country = window.countryList ? window.countryList.find(item => item.itu_code === itu) : null;
-        const selectedCountryCode = country ? country.country_code : null;
+      const country = window.countryList ? window.countryList.find(item => item.itu_code === itu) : null;
+      const selectedCountryCode = country ? country.country_code : null;
 
-        if (selectedCountryCode) {
-            const searchUrl = `https://onlineradiobox.com/search?c=${selectedCountryCode}&cs=${selectedCountryCode}&q=${encodeURIComponent(stationName)}`;
-            const orbLogo = await parseOnlineradioboxPage(searchUrl, stationName);
-            if (orbLogo) {
-                foundLogoUrl = orbLogo;
-                console.log(`[FavStations] Found logo on onlineradiobox.com: ${foundLogoUrl}`);
-            }
-        } else {
-            console.warn(`[FavStations] No country code found for ITU: ${itu} for OnlineRadioBox search.`);
+      if (selectedCountryCode) {
+        const searchUrl = `https://onlineradiobox.com/search?c=${selectedCountryCode}&cs=${selectedCountryCode}&q=${encodeURIComponent(stationName)}`;
+        const orbLogo = await parseOnlineradioboxPage(searchUrl, stationName);
+        if (orbLogo) {
+          foundLogoUrl = orbLogo;
+          console.log(`[FavStations] Found logo on onlineradiobox.com: ${foundLogoUrl}`);
         }
+      } else {
+        console.warn(`[FavStations] No country code found for ITU: ${itu} for OnlineRadioBox search.`);
+      }
     }
-    
+
     if (foundLogoUrl) {
-        localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, url: foundLogoUrl }));
-        return foundLogoUrl;
+      localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, url: foundLogoUrl }));
+      return foundLogoUrl;
     }
 
     // If nothing found, cache as "DEFAULT" (not found) and return empty
@@ -2181,7 +2351,7 @@
 
   // Try to find ITU Code of the currently tuned station from page elements
   function getItuCode() {
-    const ids = ['data-itu','data-itucode','data-itu-code','data-country-itu','data-country'];
+    const ids = ['data-itu', 'data-itucode', 'data-itu-code', 'data-country-itu', 'data-country'];
     for (const id of ids) {
       const el = document.getElementById(id);
       if (el && el.textContent && el.textContent.trim()) return el.textContent.trim().toUpperCase();
@@ -2216,7 +2386,7 @@
     stations = [];
     listsObj[currentListName] = stations;
     saveListsLocal();
-    try { localStorage.setItem(storageKey, JSON.stringify(stations)); } catch (e) {}
+    try { localStorage.setItem(storageKey, JSON.stringify(stations)); } catch (e) { }
     renderButtons();
     const span = document.getElementById('favstations-list-name'); if (span) span.textContent = currentListName;
     showToast(`Created list: ${currentListName}`);
@@ -2270,10 +2440,10 @@
 
   function updateSelectWidth(sel) {
     if (!sel || sel.options.length === 0) return;
-    
+
     // If the selector is hidden, don't try to calculate width (would be 0)
     if (sel.style.display === 'none') return;
-    
+
     const tempSpan = document.createElement('span');
     tempSpan.style.visibility = 'hidden';
     tempSpan.style.position = 'absolute';
@@ -2293,7 +2463,7 @@
   }
 
   function escapeHtml(s) {
-    return String(s || '').replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]; });
+    return String(s || '').replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": "&#39;" }[c]; });
   }
 
   // Helper to make panels draggable by their title
@@ -2303,7 +2473,7 @@
     handle.onmousedown = (e) => {
       // Don't trigger drag if clicking buttons or inputs inside the handle
       if (['INPUT', 'BUTTON', 'SELECT'].includes(e.target.tagName)) return;
-      
+
       e.preventDefault();
       const rect = el.getBoundingClientRect();
       // Switch from flex centering to absolute positioning for free movement
@@ -2352,7 +2522,7 @@
     const dims = getButtonDims();
     const startW = initialWidth || dims.station.w;
     const startH = initialHeight || dims.station.h;
-    
+
     // Resizable container
     const resizeContainer = document.createElement('div');
     resizeContainer.style.cssText = `
@@ -2403,9 +2573,9 @@
     saveBtn.style.padding = '8px 20px';
     saveBtn.onclick = async () => {
       const rect = resizeContainer.getBoundingClientRect();
-      config.customWidth = Math.round(rect.width); 
+      config.customWidth = Math.round(rect.width);
       config.customHeight = Math.round(rect.height);
-      
+
       if (callbackOnSave) {
         callbackOnSave(config.customWidth, config.customHeight);
       } else {
@@ -2593,7 +2763,7 @@
         let url = remoteInput.value.trim();
         if (url.includes('github.com') && !url.includes('gist.github.com')) {
           url = url.replace('github.com', 'raw.githubusercontent.com')
-                   .replace(/\/(blob|raw)\//, '/');
+            .replace(/\/(blob|raw)\//, '/');
         }
         config.remoteStationsUrl = url;
       }
@@ -2798,7 +2968,7 @@
     dimsLabel.style.display = 'flex';
     dimsLabel.style.flexDirection = 'column';
     dimsLabel.style.gap = '4px';
-    
+
     const dimsRow = document.createElement('div');
     dimsRow.style.display = 'flex';
     dimsRow.style.gap = '8px';
@@ -2863,7 +3033,7 @@
     actions.style.gap = '10px';
     actions.style.justifyContent = 'space-between';
     actions.style.alignItems = 'center';
-    
+
     const leftActions = document.createElement('div');
     leftActions.style.display = 'flex';
     leftActions.style.gap = '10px';
@@ -2883,7 +3053,7 @@
           let url = remoteInput.value.trim();
           if (url.includes('github.com') && !url.includes('gist.github.com')) {
             url = url.replace('github.com', 'raw.githubusercontent.com')
-                     .replace(/\/(blob|raw)\//, '/');
+              .replace(/\/(blob|raw)\//, '/');
           }
 
           // Validate the URL format
@@ -2944,7 +3114,7 @@
       await persistConfig();
 
       closeOverlay();
-      
+
       // Update temporary slots if count changed
       tempSlots = new Array(config.tempSlotCount).fill(null);
 
