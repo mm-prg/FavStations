@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * FavStations Plugin for FM-DX Webserver (v0.1.3)
+ * FavStations Plugin for FM-DX Webserver (v0.1.4)
  * ************************************************
  */
 
@@ -100,7 +100,7 @@ endpointsRouter.get('/plugins/FavStations/list', (req, res) => {
     let responseData = parsed;
     let responseMeta = { source: 'FavStations_data.json', date: stats.mtime.toLocaleString() };
 
-    // Se il file contiene metadati salvati (es. quelli originali di GitHub), usiamo quelli
+    // If the file contains saved metadata (e.g., original ones from GitHub), use those
     if (parsed && parsed.data && parsed.metadata && parsed.metadata.date) {
       responseData = parsed.data;
       responseMeta = parsed.metadata;

@@ -7,7 +7,7 @@
 "use strict";
 
 (() => {
-  const pluginVersion = '0.1.3';
+  const pluginVersion = '0.1.4';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -178,12 +178,34 @@
               body { margin: 0; background: #111; color: #eee; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
               .header { padding: 12px; background: #222; border-bottom: 1px solid #333; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index: 10; }
               h2 { margin: 0; font-size: 18px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+              .player-container { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; padding: 20px; text-align: center; }
               iframe { flex: 1; border: none; background: #000; width: 100%; height: 100%; }
+              audio { width: 100%; max-width: 400px; outline: none; }
+              #status { margin-top: 15px; font-size: 14px; color: #aaa; font-weight: 300; }
             </style>
           </head>
           <body>
             <div class="header"><h2>${title}</h2></div>
-            <iframe src="${url}" allow="autoplay"></iframe>
+            ${st.streamUrl ? `
+              <div class="player-container">
+                <audio id="player" controls autoplay>
+                  <source src="${url}">
+                  Your browser does not support the audio element.
+                </audio>
+                <div id="status">Connecting...</div>
+              </div>
+              <script>
+                const a = document.getElementById('player');
+                const s = document.getElementById('status');
+                a.onplaying = () => s.textContent = 'Playing';
+                a.onwaiting = () => s.textContent = 'Buffering...';
+                a.onerror = () => s.textContent = 'Error: Unable to load stream';
+                // Trigger play immediately using the gesture from the parent window
+                a.play().catch(() => { s.textContent = 'Click Play to start'; });
+              </script>
+            ` : `
+              <iframe src="${url}" allow="autoplay"></iframe>
+            `}
           </body>
         </html>
       `);
@@ -1178,14 +1200,14 @@
             listsObj = serverLists;
 
             if (forceServer) {
-              // Quando forziamo il caricamento dal server, mostriamo i dati del file locale
+              // When forcing load from server, show the local file data
               loadMetadata = {
                 origin: 'Server',
                 source: 'FavStations_data.json',
                 date: result.serverDate || metadata.date || 'N/A'
               };
             } else {
-              // Caricamento normale (es. all'avvio): preserviamo la genealogia originale dei dati
+              // Normal loading (e.g., at startup): preserve original data lineage
               loadMetadata = {
                 origin: metadata.origin || 'Server',
                 source: metadata.source || 'FavStations_data.json',
@@ -1351,137 +1373,162 @@
       createNewList(name);
       renderListManager(); // Refresh this panel
     };
-
-    const importBtn = document.createElement('button');
-    importBtn.textContent = '📥 Import (JSON)';
-    importBtn.style.cssText = btnStyle;
-    importBtn.title = 'Load lists from a previously exported FavStations JSON file.';
-    importBtn.onclick = () => {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.json,application/json';
-      input.onchange = async (ev) => {
-        const file = ev.target.files && ev.target.files[0];
-        if (!file) return;
-        try {
-          const txt = await file.text();
-          const rawData = JSON.parse(txt);
-          const dataToImport = (parsed && parsed.data && !Array.isArray(parsed.data)) ? parsed.data : parsed; // Handle metadata wrapper
-          if (Array.isArray(dataToImport)) {
-            const sane = dataToImport.map(item => ({ freq: item.freq ? String(item.freq) : '', name: item.name || '', antenna: item.antenna || '', logo: item.logo || '', itu: item.itu || '', picode: item.picode || generateId(), streamUrl: item.streamUrl || '' }));
-            stations = sane; listsObj[currentListName] = stations;
-          } else if (dataToImport && typeof dataToImport === 'object') {
-            for (const [k, v] of Object.entries(dataToImport)) {
-              if (Array.isArray(v)) listsObj[k] = v.map(item => ({ freq: item && item.freq ? String(item.freq) : '', name: item && item.name ? item.name : '', antenna: item && item.antenna ? item.antenna : '', logo: item && item.logo ? item.logo : '', itu: item && item.itu ? item.itu : '', picode: item && item.picode ? item.picode : generateId(), streamUrl: item.streamUrl || '' }));
-            }
-            if (Object.keys(listsObj).length > 0 && !listsObj[currentListName]) currentListName = Object.keys(listsObj)[0]; // Ensure currentListName is valid
-            stations = listsObj[currentListName] || [];
-          }
-          loadMetadata = { origin: 'Local File', source: file.name, date: new Date(file.lastModified).toLocaleString() };
-          saveListsLocal();
-          await persistStations();
-          renderButtons();
-          updateListSelect();
-          renderListManager(); // Refresh the manager view
-          updateMetadataDisplay();
-          showToast(`Imported ${file.name}`);
-        } catch (e) { alert('Import failed: ' + e.message); }
-      };
-      input.click();
-    };
-
-    const exportBtn = document.createElement('button');
-    exportBtn.textContent = '📤 Export (JSON)';
-    exportBtn.style.cssText = btnStyle;
-    exportBtn.title = 'Download all current lists as a JSON file for backup.';
-    exportBtn.onclick = () => exportStations();
-
     actionsBar.appendChild(addBtn);
-    actionsBar.appendChild(importBtn);
-    actionsBar.appendChild(exportBtn);
 
-    const reloadBtn = document.createElement('button');
-    reloadBtn.textContent = '🔄 Reload';
-    reloadBtn.style.cssText = btnStyle;
-    reloadBtn.title = 'Refresh the station lists from the server or local storage.';
-    reloadBtn.onclick = async () => {
-      const mode = config.startupMode || 'server';
-      if (mode === 'empty') {
-        listsObj = { 'Default': [] };
-        stations = [];
-        currentListName = 'Default';
-        loadMetadata = { origin: 'Empty Startup', source: 'Generated', date: new Date().toLocaleString() };
-        showToast('Lists reset to empty');
-      } else if (mode === 'remote') {
-        showToast('Reloading from remote URL...');
-        await importFromRemote(true); // silent = true, so it will show its own success/failure toast
-      } else {
-        // Default: server
-        await fetchList(true);
-        showToast('Lists reloaded from server');
+    // Dropdown menu for Loading Options
+    const loadMenuBtn = document.createElement('button');
+    loadMenuBtn.textContent = '📥 Load ▾';
+    loadMenuBtn.style.cssText = btnStyle;
+    loadMenuBtn.onclick = (ev) => {
+      const rect = loadMenuBtn.getBoundingClientRect();
+      const items = [
+        {
+          label: 'Reload (Startup Mode)',
+          tooltip: 'Refresh lists based on the configured startup mode.',
+          action: async () => {
+            const mode = config.startupMode || 'server';
+            if (mode === 'empty') {
+              listsObj = { 'Default': [] };
+              stations = [];
+              currentListName = 'Default';
+              loadMetadata = { origin: 'Empty Startup', source: 'Generated', date: new Date().toLocaleString() };
+              showToast('Lists reset');
+            } else if (mode === 'remote') {
+              showToast('Reloading from remote URL...');
+              await importFromRemote(true);
+            } else {
+              await fetchList(true);
+              showToast('Lists reloaded from server');
+            }
+            renderListManager();
+            updateMetadataDisplay();
+            renderButtons();
+            updateListSelect();
+          }
+        },
+        {
+          label: 'Load from Local File',
+          tooltip: 'Load from a previously saved FavStations JSON file.',
+          action: () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json,application/json';
+            input.onchange = async (ev) => {
+              const file = ev.target.files && ev.target.files[0];
+              if (!file) return;
+              try {
+                const txt = await file.text();
+                const rawData = JSON.parse(txt);
+                const dataToImport = (rawData && rawData.data && !Array.isArray(rawData.data)) ? rawData.data : rawData;
+                if (Array.isArray(dataToImport)) {
+                  const sane = dataToImport.map(item => ({ freq: item.freq ? String(item.freq) : '', name: item.name || '', antenna: item.antenna || '', logo: item.logo || '', itu: item.itu || '', picode: item.picode || generateId(), streamUrl: item.streamUrl || '' }));
+                  stations = sane; listsObj[currentListName] = stations;
+                } else if (dataToImport && typeof dataToImport === 'object') {
+                  for (const [k, v] of Object.entries(dataToImport)) {
+                    if (Array.isArray(v)) listsObj[k] = v.map(item => ({ freq: item && item.freq ? String(item.freq) : '', name: item && item.name ? item.name : '', antenna: item && item.antenna ? item.antenna : '', logo: item && item.logo ? item.logo : '', itu: item && item.itu ? item.itu : '', picode: item && item.picode ? item.picode : generateId(), streamUrl: item.streamUrl || '' }));
+                  }
+                  if (Object.keys(listsObj).length > 0 && !listsObj[currentListName]) currentListName = Object.keys(listsObj)[0];
+                  stations = listsObj[currentListName] || [];
+                }
+                loadMetadata = { origin: 'Local File', source: file.name, date: new Date(file.lastModified).toLocaleString() };
+                saveListsLocal();
+                await persistStations();
+                renderButtons();
+                updateListSelect();
+                renderListManager();
+                updateMetadataDisplay();
+                showToast(`Imported ${file.name}`);
+              } catch (e) { alert('Import failed: ' + e.message); }
+            };
+            input.click();
+          }
+        }
+      ];
+
+      if (isAdmin) {
+        items.push({
+          label: 'Load from Server',
+          tooltip: 'Admin: Force reload all lists from the server\'s FavStations_data.json file.',
+          action: async () => {
+            showToast('Loading from server...');
+            await fetchList(true);
+            renderListManager();
+            updateMetadataDisplay();
+            renderButtons();
+            updateListSelect();
+            showToast('Lists loaded from server');
+          }
+        });
+        items.push({
+          label: 'Load from Remote',
+          tooltip: 'Admin: Force import lists from the configured remote JSON URL.',
+          action: async () => {
+            showToast('Loading from remote URL...');
+            const success = await importFromRemote(false);
+            if (success) {
+              renderListManager();
+              updateMetadataDisplay();
+              renderButtons();
+              updateListSelect();
+            }
+          }
+        });
       }
-      renderListManager();
-      updateMetadataDisplay();
-      renderButtons(); // Ensure buttons are re-rendered after data changes
-      updateListSelect(); // Ensure list select is updated after data changes
+      showStationContextMenu(rect.left, rect.bottom + 5, { items });
     };
-    actionsBar.appendChild(reloadBtn);
+    actionsBar.appendChild(loadMenuBtn);
 
-    if (isAdmin) {
-      // New: Load from Server button (Admin only)
-      const loadFromServerBtn = document.createElement('button');
-      loadFromServerBtn.textContent = '☁️ Load from Server';
-      loadFromServerBtn.style.cssText = btnStyle;
-      loadFromServerBtn.title = 'Admin: Force reload all lists from the server\'s FavStations_data.json file, overriding local changes.';
-      loadFromServerBtn.onclick = async () => {
-        showToast('Loading lists from server...');
-        await fetchList(true); // Pass true to force server and bypass local storage
-        renderListManager();
-        updateMetadataDisplay();
-        renderButtons();
-        updateListSelect();
-        showToast('Lists loaded from server');
-      };
-      actionsBar.appendChild(loadFromServerBtn);
-
-      // New: Load from Remote button (Admin only)
-      const loadFromRemoteBtn = document.createElement('button');
-      loadFromRemoteBtn.textContent = '🌐 Load from Remote';
-      loadFromRemoteBtn.style.cssText = btnStyle;
-      loadFromRemoteBtn.title = 'Admin: Force import lists from a remote JSON URL (will prompt for URL if not configured), overriding local changes.';
-      loadFromRemoteBtn.onclick = async () => {
-        showToast('Loading lists from remote URL...');
-        const success = await importFromRemote(false); // silent = false, so it will prompt for URL if needed
-        if (success) {
-          renderListManager();
-          updateMetadataDisplay();
-          renderButtons();
-          updateListSelect();
+    // Dropdown menu for Saving Options
+    const saveMenuBtn = document.createElement('button');
+    saveMenuBtn.textContent = '💾 Save ▾';
+    saveMenuBtn.style.cssText = btnStyle;
+    saveMenuBtn.onclick = (ev) => {
+      const rect = saveMenuBtn.getBoundingClientRect();
+      const items = [
+        {
+          label: 'Copy to Clipboard',
+          tooltip: 'Copy lists to the clipboard as JSON text.',
+          action: async () => {
+            try {
+              const dataToCopy = {
+                data: (listsObj && Object.keys(listsObj).length) ? listsObj : { [currentListName]: (stations || []) },
+                metadata: loadMetadata
+              };
+              await navigator.clipboard.writeText(JSON.stringify(dataToCopy, null, 2));
+              showToast('Lists copied to clipboard');
+            } catch (err) {
+              showToast('Copy failed');
+            }
+          }
+        },
+        {
+          label: 'Save to Local File',
+          tooltip: 'Download current lists as a JSON file for backup.',
+          action: () => exportStations()
         }
-      };
-      actionsBar.appendChild(loadFromRemoteBtn);
-    }
+      ];
 
-    if (isAdmin) {
-      const serverSaveBtn = document.createElement('button');
-      serverSaveBtn.textContent = '💾 Save to Server';
-      serverSaveBtn.style.cssText = btnStyle;
-      serverSaveBtn.title = 'Admin: Permanently save these lists as the global default on the server.';
-      serverSaveBtn.onclick = async () => {
-        await persistStations(); // Salva prima localmente
-        const dataToSave = { data: listsObj, metadata: loadMetadata };
-        const ok = await saveServer(dataToSave);
-        if (ok) {
-          showToast('Successfully saved to server');
-          // Dopo il salvataggio, aggiorniamo i dati per recuperare i nuovi metadati (es. data file)
-          await fetchList();
-          updateMetadataDisplay();
-        } else {
-          showToast('Failed to save to server');
-        }
-      };
-      actionsBar.appendChild(serverSaveBtn);
-    }
+      if (isAdmin) {
+        items.push({
+          label: 'Save to Server',
+          tooltip: 'Admin: Permanently save these lists as the global default on the server.',
+          action: async () => {
+            await persistStations();
+            const dataToSave = { data: listsObj, metadata: loadMetadata };
+            const ok = await saveServer(dataToSave);
+            if (ok) {
+              showToast('Successfully saved to server');
+              await fetchList();
+              updateMetadataDisplay();
+            } else {
+              showToast('Failed to save to server');
+            }
+          }
+        });
+      }
+      showStationContextMenu(rect.left, rect.bottom + 5, { items });
+    };
+    actionsBar.appendChild(saveMenuBtn);
 
     box.appendChild(actionsBar);
 
@@ -1841,10 +1888,34 @@
     searchResultsPanel.style.color = '#333';
     searchResultsPanel.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.05)';
 
-    async function performAutoSearch(query) {
+    function getQueryVariations(q) {
+      const variations = [];
+      let cleaned = q.replace(/^[_*\s]+|[_*\s]+$/g, '')
+                     .replace(/_/g, ' ')
+                     .replace(/\s+/g, ' ')
+                     .trim();
+      if (cleaned) {
+        variations.push(cleaned);
+      }
+      let separatedLettersDigits = cleaned
+        .replace(/([a-zA-Z])(\d)/g, '$1 $2')
+        .replace(/(\d)([a-zA-Z])/g, '$1 $2');
+      if (separatedLettersDigits !== cleaned && separatedLettersDigits.trim()) {
+        variations.push(separatedLettersDigits.trim());
+      }
+      let noHyphens = cleaned.replace(/[-/]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (noHyphens !== cleaned && noHyphens) {
+        variations.push(noHyphens);
+      }
+      return [...new Set(variations)];
+    }
+
+    async function performAutoSearch(rawQuery) {
       searchResultsPanel.style.display = 'block';
       searchResultsPanel.innerHTML = '<div style="padding: 10px; text-align: center; color: #666;">🔍 Searching Radio-Browser database...</div>';
       searchResultsPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+      const variations = getQueryVariations(rawQuery);
 
       const rbServers = [
         'https://de1.api.radio-browser.info',
@@ -1855,18 +1926,24 @@
       const servers = [...rbServers].sort(() => Math.random() - 0.5);
       let data = null;
 
-      for (const server of servers) {
-        try {
-          const url = `${server}/json/stations/search?name=${encodeURIComponent(query)}&limit=6&hidebroken=true`;
-          const res = await fetch(url);
-          if (res.ok) {
-            data = await res.json();
-            if (data && data.length > 0) {
-              break;
+      for (const query of variations) {
+        for (const server of servers) {
+          try {
+            const url = `${server}/json/stations/search?name=${encodeURIComponent(query)}&limit=6&hidebroken=true`;
+            const res = await fetch(url);
+            if (res.ok) {
+              const parsed = await res.json();
+              if (parsed && parsed.length > 0) {
+                data = parsed;
+                break;
+              }
             }
+          } catch (e) {
+            console.warn(`[FavStations] Failed to fetch from mirror ${server} for query "${query}":`, e);
           }
-        } catch (e) {
-          console.warn(`[FavStations] Failed to fetch from mirror ${server}:`, e);
+        }
+        if (data && data.length > 0) {
+          break;
         }
       }
 
@@ -1901,9 +1978,13 @@
       data.forEach(item => {
         const itemRow = document.createElement('div');
         itemRow.style.cssText = 'padding: 6px; border-radius: 4px; border: 1px solid #eee; background: #fff; cursor: pointer; transition: background 0.15s; display: flex; flex-direction: column; gap: 2px;';
+        itemRow.style.cssText = 'padding: 6px; border-radius: 4px; border: 1px solid #eee; background: #fff; cursor: pointer; transition: background 0.15s; display: flex; align-items: center; justify-content: space-between; gap: 8px;';
 
         itemRow.onmouseenter = () => { itemRow.style.background = '#f0f7ff'; itemRow.style.borderColor = '#a3d2ff'; };
         itemRow.onmouseleave = () => { itemRow.style.background = '#fff'; itemRow.style.borderColor = '#eee'; };
+
+        const infoCol = document.createElement('div');
+        infoCol.style.cssText = 'display: flex; flex-direction: column; gap: 2px; flex: 1; overflow: hidden;';
 
         const titleSpan = document.createElement('span');
         titleSpan.style.cssText = 'font-weight: 600; color: #2c3e50;';
@@ -1920,8 +2001,33 @@
         const detailsArray = [streamDetails, countryInfo, genresInfo].filter(Boolean);
         infoSpan.textContent = detailsArray.join(' | ');
 
-        itemRow.appendChild(titleSpan);
-        itemRow.appendChild(infoSpan);
+        const urlDisplaySpan = document.createElement('span');
+        urlDisplaySpan.style.cssText = 'font-size: 10px; color: #95a5a6; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;';
+        urlDisplaySpan.textContent = item.url_resolved || item.url;
+        urlDisplaySpan.title = urlDisplaySpan.textContent; // Show full URL on hover
+
+        infoCol.appendChild(titleSpan);
+        infoCol.appendChild(infoSpan);
+        infoCol.appendChild(urlDisplaySpan);
+
+        // New: Play button to test the stream before importing
+        const testBtn = document.createElement('button');
+        testBtn.textContent = '▶️';
+        testBtn.title = 'Test this stream';
+        testBtn.style.cssText = 'width: 28px; height: 28px; padding: 0; font-size: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer;';
+        testBtn.onclick = (ev) => {
+          ev.stopPropagation(); // Prevents the row's import click event
+          const url = item.url_resolved || item.url;
+          if (url) {
+            playStream({
+              name: item.name,
+              streamUrl: url
+            });
+          }
+        };
+
+        itemRow.appendChild(infoCol);
+        itemRow.appendChild(testBtn);
 
         itemRow.onclick = () => {
           if (item.url_resolved) {
@@ -1957,7 +2063,9 @@
       const q = (nameInput.value || freqInput.value).trim();
       if (!q) return showToast('Enter name or frequency to search');
 
+      // Get position first to ensure the menu is placed correctly before the panel expands
       const rect = streamSearchBtn.getBoundingClientRect();
+      
       showStationContextMenu(rect.left, rect.bottom + 5, {
         items: [
           {
@@ -1971,19 +2079,14 @@
             tooltip: 'Search streaming URLs on FMStream.org'
           },
           {
-            label: 'Radio-Browser.info',
-            action: () => window.open(`https://www.radio-browser.info/#/search?name=${encodeURIComponent(nameInput.value || q)}`, '_blank'),
-            tooltip: 'Search on Radio-Browser database'
-          },
-          {
             label: 'OnlineRadioBox.com',
             action: () => window.open(`https://onlineradiobox.com/search?q=${encodeURIComponent(nameInput.value || q)}`, '_blank'),
             tooltip: 'Search on OnlineRadioBox'
           },
           {
-            label: 'FMScan.org',
-            action: () => window.open(`https://fmscan.org/net.php?r=f&q=${encodeURIComponent(nameInput.value || q)}`, '_blank'),
-            tooltip: 'Search transmitter networks on FMScan'
+            label: 'Radio Garden',
+            action: () => window.open(`https://www.google.com/search?q=site%3Aradio.garden%2Flisten+${encodeURIComponent(nameInput.value || q)}`, '_blank'),
+            tooltip: 'Search this station on Radio Garden (via Google Site Search)'
           },
           {
             label: 'Google Search',
@@ -1996,7 +2099,22 @@
         ]
       });
     };
+    const streamTestBtn = document.createElement('button');
+    streamTestBtn.type = 'button';
+    streamTestBtn.textContent = '▶️';
+    streamTestBtn.title = 'Test Stream: Play the stream currently entered in this field.';
+    streamTestBtn.style.cssText = 'width:28px; height:28px; padding:0; font-size:12px; flex-shrink:0; display:flex; align-items:center; justify-content:center;';
+    streamTestBtn.onclick = () => {
+      const url = streamUrlInput.value.trim();
+      if (!url) return showToast('Enter a stream URL to test');
+      playStream({
+        name: (nameInput.value || freqInput.value || 'Test Station').trim(),
+        freq: freqInput.value || '',
+        streamUrl: url
+      });
+    };
     streamUrlContainer.appendChild(streamSearchBtn);
+    streamUrlContainer.appendChild(streamTestBtn);
     streamUrlLabel.appendChild(streamUrlContainer);
     form.appendChild(streamUrlLabel);
     form.appendChild(searchResultsPanel);
