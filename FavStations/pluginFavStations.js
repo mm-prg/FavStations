@@ -1505,11 +1505,22 @@
           label: 'Save to Local File',
           tooltip: 'Download current lists as a JSON file for backup.',
           action: () => exportStations()
-        },
-        {
+        }
+      ];
+
+      if (isAdmin) {
+        items.push({
           label: 'Save to Pastebin',
-          tooltip: 'Export current lists to Pastebin (requires API Key in settings).',
+          tooltip: 'Admin: Export current lists to Pastebin. Prompts for API Key if missing.',
           action: async () => {
+            if (!config.pastebinDevKey) {
+              const key = prompt('Pastebin API Dev Key is missing. Please enter your Pastebin API Dev Key.\n\nYou can find it here after login: https://pastebin.com/doc_api');
+              if (!key) return;
+              config.pastebinDevKey = key.trim();
+              const saved = await persistConfigToServer();
+              if (!saved) return;
+            }
+
             const dataToExport = {
               data: (listsObj && Object.keys(listsObj).length) ? listsObj : { [currentListName]: (stations || []) },
               metadata: loadMetadata
@@ -1535,10 +1546,8 @@
               alert('Failed to connect to server for Pastebin export.');
             }
           }
-        }
-      ];
+        });
 
-      if (isAdmin) {
         items.push({
           label: 'Save to Server',
           tooltip: 'Admin: Permanently save these lists as the global default on the server.',
