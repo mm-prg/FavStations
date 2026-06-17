@@ -7,7 +7,7 @@
 "use strict";
 
 (() => {
-  const pluginVersion = '0.1.4';
+  const pluginVersion = '0.1.5';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -1505,6 +1505,36 @@
           label: 'Save to Local File',
           tooltip: 'Download current lists as a JSON file for backup.',
           action: () => exportStations()
+        },
+        {
+          label: 'Save to Pastebin',
+          tooltip: 'Export current lists to Pastebin (requires API Key in settings).',
+          action: async () => {
+            const dataToExport = {
+              data: (listsObj && Object.keys(listsObj).length) ? listsObj : { [currentListName]: (stations || []) },
+              metadata: loadMetadata
+            };
+            showToast('Creating Paste...');
+            try {
+              const response = await fetch('/plugins/FavStations/export-pastebin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  data: JSON.stringify(dataToExport, null, 2),
+                  name: `FavStations Export (${new Date().toLocaleDateString()})`
+                })
+              });
+              const result = await response.json();
+              if (result.ok) {
+                window.open(result.url, '_blank');
+                showToast('Paste created! URL opened in new tab.');
+              } else {
+                alert('Pastebin error: ' + result.error);
+              }
+            } catch (err) {
+              alert('Failed to connect to server for Pastebin export.');
+            }
+          }
         }
       ];
 
@@ -3063,6 +3093,22 @@
       form.appendChild(showLogosLabel);
     }
 
+    // --- Pastebin API Key (Variable in configuration) ---
+    if (isAdmin) {
+      const pastebinLabel = document.createElement('label');
+      pastebinLabel.textContent = 'Pastebin API Dev Key:';
+      pastebinLabel.style.display = 'flex';
+      pastebinLabel.style.flexDirection = 'column';
+      pastebinLabel.style.gap = '4px';
+      const pastebinInput = document.createElement('input');
+      pastebinInput.type = 'password'; // Hidden input for security
+      pastebinInput.value = baseConfig.pastebinDevKey || '';
+      pastebinInput.placeholder = 'Your Pastebin API Key';
+      pastebinInput.style.padding = '6px';
+      pastebinLabel.appendChild(pastebinInput);
+      form.appendChild(pastebinLabel);
+    }
+
     // --- Temp Slot Count ---
     const tempSlotLabel = document.createElement('label');
     tempSlotLabel.textContent = 'Number of Temporary Slots (1-30):';
@@ -3206,6 +3252,8 @@
           config.remoteStationsUrl = defaultRemoteStationsUrl;
         }
         if (showLogosCheckbox) config.showLogos = showLogosCheckbox.checked;
+        const pastebinInput = form.querySelector('input[placeholder="Your Pastebin API Key"]');
+        if (pastebinInput) config.pastebinDevKey = pastebinInput.value.trim();
       }
 
       if (isGlobal && isAdmin && modeSelect) config.showStationsMode = modeSelect.value;

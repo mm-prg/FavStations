@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * FavStations Plugin for FM-DX Webserver (v0.1.4)
+ * FavStations Plugin for FM-DX Webserver (v0.1.5)
  * ************************************************
  */
 
@@ -8,6 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const querystring = require('querystring');
 const https = require('https');
 const http = require('http');
 const express = require('express');
@@ -37,7 +38,8 @@ function loadConfig() {
         buttonSize: 'custom',
         customWidth: 120,
         customHeight: 60,
-        startupMode: 'server'
+        startupMode: 'server',
+        pastebinDevKey: ''
       };
       saveConfig(defaultConfig); // Creates the file with default values
       return defaultConfig;
@@ -212,6 +214,62 @@ endpointsRouter.post('/plugins/FavStations/fetch-remote', express.json(), async 
     res.json({ ok: true, data, lastModified });
   } catch (e) {
     logError(`[${pluginName}] Remote fetch failed:`, e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+endpointsRouter.post('/plugins/FavStations/export-pastebin', express.json(), (req, res) => {
+  try {
+    const { data, name } = req.body;
+    const config = loadConfig();
+    const devKey = config.pastebinDevKey;
+
+    if (!devKey) {
+      return res.status(400).json({ ok: false, error: 'Pastebin API Dev Key missing in configuration.' });
+    }
+
+    const postData = querystring.stringify({
+      api_dev_key: devKey,
+      api_option: 'paste',
+      api_paste_code: data,
+      api_paste_name: name || 'FavStations Export',
+      api_paste_format: 'json',
+      api_paste_private: '1', // 1 = unlisted
+      api_paste_expire_date: '1M' // Expire in 1 month
+    });
+
+    const options = {
+      hostname: 'pastebin.com',
+      port: 443,
+      path: '/api/api_post.php',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': postData.length
+      }
+    };
+
+    const postReq = https.request(options, (postRes) => {
+      let body = '';
+      postRes.on('data', chunk => body += chunk);
+      postRes.on('end', () => {
+        if (body.startsWith('http')) {
+          res.json({ ok: true, url: body });
+        } else {
+          res.status(400).json({ ok: false, error: body });
+        }
+      });
+    });
+
+    postReq.on('error', (e) => {
+      logError(`[${pluginName}] Pastebin request error:`, e);
+      res.status(500).json({ ok: false, error: e.message });
+    });
+
+    postReq.write(postData);
+    postReq.end();
+  } catch (e) {
+    logError(`[${pluginName}] Error in /export-pastebin:`, e);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
