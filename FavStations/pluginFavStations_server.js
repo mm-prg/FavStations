@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * FavStations Plugin for FM-DX Webserver (v0.1.5)
+ * FavStations Plugin for FM-DX Webserver (v0.1.6)
  * ************************************************
  */
 
@@ -39,7 +39,9 @@ function loadConfig() {
         customWidth: 120,
         customHeight: 60,
         startupMode: 'server',
-        pastebinDevKey: ''
+        pastebinDevKey: '',
+        pastebinFolderUrl: '',
+        pastebinUserKey: ''
       };
       saveConfig(defaultConfig); // Creates the file with default values
       return defaultConfig;
@@ -218,6 +220,44 @@ endpointsRouter.post('/plugins/FavStations/fetch-remote', express.json(), async 
   }
 });
 
+endpointsRouter.post('/plugins/FavStations/fetch-pastebin-folder', express.json(), (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ ok: false, error: 'URL missing' });
+    
+    const client = url.startsWith('https') ? https : http;
+    const options = { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) FavStations/1.0' } };
+
+    client.get(url, options, (pRes) => {
+      if (pRes.statusCode !== 200) {
+        return res.status(pRes.statusCode).json({ ok: false, error: `Pastebin returned status ${pRes.statusCode}` });
+      }
+      let html = '';
+      pRes.on('data', chunk => html += chunk);
+      pRes.on('end', () => {
+        const files = [];
+        const regex = /<a href="\/([a-zA-Z0-9]{8})">([^<]+)<\/a>/g;
+        let match;
+        const seen = new Set();
+        const blacklist = ['archive', 'contact', 'doc_api', 'faq_api', 'pro_accou', 'login_fo', 'signup_f'];
+        while ((match = regex.exec(html)) !== null) {
+          const id = match[1].trim();
+          const title = match[2].trim();
+          if (!blacklist.includes(id.toLowerCase()) && !seen.has(id)) {
+            files.push({ id, title });
+            seen.add(id);
+          }
+        }
+        // On Pastebin folder pages, pastes are listed from newest to oldest.
+        // The regex finds them in document order, so the array is already sorted correctly.
+        res.json({ ok: true, files });
+      });
+    }).on('error', e => res.status(500).json({ ok: false, error: e.message }));
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 endpointsRouter.post('/plugins/FavStations/export-pastebin', express.json(), (req, res) => {
   try {
     const { data, name } = req.body;
@@ -228,15 +268,32 @@ endpointsRouter.post('/plugins/FavStations/export-pastebin', express.json(), (re
       return res.status(400).json({ ok: false, error: 'Pastebin API Dev Key missing in configuration.' });
     }
 
-    const postData = querystring.stringify({
+    const postParams = {
       api_dev_key: devKey,
       api_option: 'paste',
       api_paste_code: data,
       api_paste_name: name || 'FavStations Export',
       api_paste_format: 'json',
-      api_paste_private: '1', // 1 = unlisted
+      api_paste_private: '0', // 0 = public
       api_paste_expire_date: '1M' // Expire in 1 month
-    });
+    };
+
+    // User key is required to add pastes to a folder
+    if (config.pastebinUserKey) {
+      postParams.api_user_key = config.pastebinUserKey;
+    }
+
+    // If a folder URL and a user key are configured, extract the folder key and add it to the request.
+    // Both are required to add a paste to a folder.
+    if (config.pastebinFolderUrl && config.pastebinUserKey) {
+      try {
+        const urlParts = config.pastebinFolderUrl.split('/').filter(p => p);
+        const folderKey = urlParts.pop();
+        if (folderKey) postParams.api_folder_key = folderKey;
+        logInfo(`[${pluginName}] Adding paste to Pastebin folder.`);
+      } catch (e) { logError(`[${pluginName}] Could not parse Pastebin folder key from URL: ${config.pastebinFolderUrl}`); }
+    }
+    const postData = querystring.stringify(postParams);
 
     const options = {
       hostname: 'pastebin.com',
@@ -274,7 +331,41 @@ endpointsRouter.post('/plugins/FavStations/export-pastebin', express.json(), (re
   }
 });
 
+// GET list of available JSON files in the plugin directory (backups or alternative lists)
+endpointsRouter.get('/plugins/FavStations/list-backups', (req, res) => {
+  try {
+    const files = fs.readdirSync(__dirname)
+      .filter(f => f.endsWith('.json') && f !== 'FavStations_data.json' && f !== 'package.json');
+    res.json({ ok: true, files });
+  } catch (e) {
+    logError(`[${pluginName}] Error listing backups:`, e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET content of a specific JSON file from the plugin directory
+endpointsRouter.get('/plugins/FavStations/load-backup', (req, res) => {
+  try {
+    const { filename } = req.query;
+    if (!filename) return res.status(400).json({ ok: false, error: 'Filename missing' });
+
+    // Safety check: prevent path traversal
+    const safeName = path.basename(filename);
+    const targetPath = path.join(__dirname, safeName);
+
+    if (!fs.existsSync(targetPath)) return res.status(404).json({ ok: false, error: 'File not found' });
+
+    const raw = fs.readFileSync(targetPath, 'utf8');
+    const parsed = JSON.parse(raw || '{}');
+    const stats = fs.statSync(targetPath);
+
+    res.json({ ok: true, data: parsed, mtime: stats.mtime.toLocaleString() });
+  } catch (e) {
+    logError(`[${pluginName}] Error loading backup:`, e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Initialization: ensures configuration exists on startup
 loadConfig();
-
 logInfo(`[${pluginName}] Backend endpoints initialized: /plugins/FavStations/list, /plugins/FavStations/save, /plugins/FavStations/config`);

@@ -7,7 +7,7 @@
 "use strict";
 
 (() => {
-  const pluginVersion = '0.1.5';
+  const pluginVersion = '0.1.6';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -93,6 +93,9 @@
     customWidth: 120,
     customHeight: 60,
     tempSlotCount: 8,
+    pastebinDevKey: '',
+    pastebinFolderUrl: '',
+    pastebinUserKey: '',
     startupMode: 'server',
   };
 
@@ -122,12 +125,17 @@
       console.warn('FavStations: Unable to load configuration from server.', e);
     }
 
-    // Load local storage overrides (personal/temporary settings for this browser)
-    // This allows even admins to have personal display preferences that differ from global defaults
-    const localConfigRaw = localStorage.getItem(configKey);
-    if (localConfigRaw) {
-      config = { ...config, ...JSON.parse(localConfigRaw) };
-      console.log('FavStations: Loaded configuration from local storage');
+    // If server config was loaded successfully by an admin, it should be the master source for sensitive data.
+    // We can still allow local overrides for purely cosmetic settings.
+    if (serverLoaded && isAdmin) {
+      console.log('FavStations: Admin mode, server configuration is authoritative.');
+    } else {
+      // For non-admins, or if server fails, load local storage overrides.
+      const localConfigRaw = localStorage.getItem(configKey);
+      if (localConfigRaw) {
+        config = { ...config, ...JSON.parse(localConfigRaw) };
+        console.log('FavStations: Loaded configuration from local storage');
+      }
     }
 
     // Ensures showLogos is a boolean
@@ -149,6 +157,8 @@
       updateListSelect();
     } else if (mode === 'remote') {
       await importFromRemote(true);
+    } else if (mode === 'pastebin_folder') {
+      await importFromPastebinFolder(true);
     } else {
       // Default: server
       await fetchList();
@@ -182,6 +192,7 @@
               iframe { flex: 1; border: none; background: #000; width: 100%; height: 100%; }
               audio { width: 100%; max-width: 400px; outline: none; }
               #status { margin-top: 15px; font-size: 14px; color: #aaa; font-weight: 300; }
+              .url-display { font-size: 10px; color: #555; margin-top: 10px; word-break: break-all; font-family: monospace; max-width: 90%; text-align: center; }
             </style>
           </head>
           <body>
@@ -193,6 +204,7 @@
                   Your browser does not support the audio element.
                 </audio>
                 <div id="status">Connecting...</div>
+                <div class="url-display">${url}</div>
               </div>
               <script>
                 const a = document.getElementById('player');
@@ -204,7 +216,10 @@
                 a.play().catch(() => { s.textContent = 'Click Play to start'; });
               </script>
             ` : `
-              <iframe src="${url}" allow="autoplay"></iframe>
+              <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                <iframe src="${url}" allow="autoplay" style="flex: 1; border: none;"></iframe>
+                <div class="url-display" style="padding: 4px 10px; background: #1a1a1a; margin: 0; width: 100%; box-sizing: border-box; border-top: 1px solid #333; max-width: 100%;">${url}</div>
+              </div>
             `}
           </body>
         </html>
@@ -265,6 +280,44 @@
     return false;
   }
 
+  // Helper to process raw imported data (single list or multi-list)
+  function processImportedData(rawData) {
+    const parsed = (rawData && rawData.data && !Array.isArray(rawData.data)) ? rawData.data : rawData;
+    if (Array.isArray(parsed)) {
+      // Legacy format (single list)
+      stations = parsed.map(item => ({
+        freq: item.freq ? String(item.freq) : '',
+        name: item.name || '',
+        antenna: item.antenna || '',
+        logo: item.logo || '',
+        itu: item.itu || '',
+        picode: item.picode || generateId(),
+        streamUrl: item.streamUrl || ''
+      }));
+      listsObj[currentListName] = stations;
+    } else if (parsed && typeof parsed === 'object') {
+      // Multi-list format
+      const newLists = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (!Array.isArray(v)) continue;
+        newLists[k] = v.map(item => ({
+          freq: item && item.freq ? String(item.freq) : '',
+          name: item && item.name ? item.name : '',
+          antenna: item && item.antenna ? item.antenna : '',
+          logo: item && item.logo ? item.logo : '',
+          itu: item && item.itu ? item.itu : '',
+          picode: item && item.picode ? item.picode : generateId(),
+          streamUrl: item && item.streamUrl ? item.streamUrl : ''
+        }));
+      }
+      listsObj = newLists;
+      if (Object.keys(listsObj).length > 0 && !listsObj[currentListName]) currentListName = Object.keys(listsObj)[0];
+      stations = listsObj[currentListName] || [];
+    } else {
+      throw new Error('Invalid format');
+    }
+  }
+
   // Imports stations from a remote JSON link
   async function importFromRemote(silent = false) {
     let url = config.remoteStationsUrl || defaultRemoteStationsUrl; // Uses value from configuration, falls back to default
@@ -295,59 +348,12 @@
       });
       const data = await res.json();
       if (data && data.ok && data.data) {
-        const rawData = data.data;
-        // Check if data is wrapped in our new metadata format
-        const parsed = (rawData && rawData.data && !Array.isArray(rawData.data)) ? rawData.data : rawData;
-
+        processImportedData(data.data);
         console.log(`FavStations: Imported stations from remote URL`);
-        // Updates remote URL in configuration if changed
         if (url !== config.remoteStationsUrl) {
           config.remoteStationsUrl = url;
           await persistConfig(); // No prompt here, it's an internal update
         }
-
-        if (Array.isArray(parsed)) {
-          // Legacy format (single list)
-          const sane = parsed.map(item => ({
-            freq: item.freq ? String(item.freq) : '',
-            name: item.name || '',
-            antenna: item.antenna || '',
-            logo: item.logo || '',
-            itu: item.itu || '',
-            picode: item.picode || generateId(),
-            streamUrl: item.streamUrl || '' // Added streamUrl
-          }));
-          stations = sane;
-          listsObj[currentListName] = stations;
-        } else if (parsed && typeof parsed === 'object') {
-          // Multi-list format
-          const newLists = {};
-          for (const [k, v] of Object.entries(parsed)) {
-            if (!Array.isArray(v)) continue;
-            newLists[k] = v.map(item => ({
-              freq: item && item.freq ? String(item.freq) : '',
-              name: item && item.name ? item.name : '',
-              antenna: item && item.antenna ? item.antenna : '',
-              logo: item && item.logo ? item.logo : '',
-              itu: item && item.itu ? item.itu : '',
-              picode: item && item.picode ? item.picode : generateId(),
-              streamUrl: item && item.streamUrl ? item.streamUrl : '' // Added streamUrl
-            }));
-          }
-          listsObj = newLists;
-          // Dopo aver caricato le liste, assicurati che currentListName sia valido o imposta la prima lista
-          const listNames = Object.keys(listsObj);
-          if (listNames.length > 0 && !listsObj[currentListName]) {
-            currentListName = listNames[0];
-          } else if (listNames.length === 0) {
-            listsObj = { 'Default': [] };
-            currentListName = 'Default';
-          }
-          stations = listsObj[currentListName] || [];
-        } else {
-          throw new Error('Invalid format');
-        }
-
         loadMetadata = { origin: 'Remote URL', source: url, date: data.lastModified || new Date().toLocaleString() };
         await persistStations();
         renderButtons();
@@ -365,6 +371,47 @@
     }
   }
 
+  // Imports the latest paste from a Pastebin folder
+  async function importFromPastebinFolder(silent = false) {
+    let url = config.pastebinFolderUrl;
+
+    if (!url) {
+      if (silent) return false; // Don't prompt on startup
+      url = prompt('Enter Pastebin Folder/Collection URL:', 'https://pastebin.com/u/cmario/1/zMXpkpRm');
+      if (!url) return false;
+      config.pastebinFolderUrl = url.trim();
+      await persistConfig();
+      if (isAdmin) await persistConfigToServer();
+    }
+
+    if (!silent) showToast('Fetching latest from Pastebin folder...');
+    try {
+      const res = await fetch('/plugins/FavStations/fetch-pastebin-folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      const data = await res.json();
+      if (data && data.ok && data.files && data.files.length > 0) {
+        const latestPaste = data.files[0]; // The first one is the most recent
+        const rawUrl = `https://pastebin.com/raw/${latestPaste.id}`;
+        config.remoteStationsUrl = rawUrl; // Temporarily set for importFromRemote
+        const success = await importFromRemote(true); // Use silent import
+        if (success) {
+          loadMetadata.origin = 'Pastebin Folder';
+          loadMetadata.source = `${latestPaste.title} (ID: ${latestPaste.id})`;
+        }
+        return success;
+      } else {
+        if (!silent) alert('No pastes found or folder inaccessible.');
+        return false;
+      }
+    } catch (e) {
+      if (!silent) alert('Error fetching folder: ' + e.message);
+      return false;
+    }
+  }
+
   // Loads lists from JSON file
   function importStations() {
     const input = document.createElement('input');
@@ -375,52 +422,8 @@
       if (!file) return;
       try {
         const txt = await file.text();
-        const rawData = JSON.parse(txt);
-        // Check for metadata wrapper
-        const parsed = (rawData && rawData.data && !Array.isArray(rawData.data)) ? rawData.data : rawData;
-
+        processImportedData(JSON.parse(txt));
         console.log(`FavStations: Imported stations from local file: ${file.name}`);
-        if (Array.isArray(parsed)) {
-          // Legacy format (single list)
-          const sane = parsed.map(item => ({
-            freq: item.freq ? String(item.freq) : '',
-            name: item.name || '',
-            antenna: item.antenna || '',
-            logo: item.logo || '',
-            itu: item.itu || '',
-            picode: item.picode || generateId(),
-            streamUrl: item.streamUrl || '' // Added streamUrl
-          }));
-          stations = sane;
-          listsObj[currentListName] = stations;
-        } else if (parsed && typeof parsed === 'object') {
-          // Multi-list format
-          const newLists = {};
-          for (const [k, v] of Object.entries(parsed)) {
-            if (!Array.isArray(v)) continue;
-            newLists[k] = v.map(item => ({
-              freq: item && item.freq ? String(item.freq) : '',
-              name: item && item.name ? item.name : '',
-              antenna: item && item.antenna ? item.antenna : '',
-              logo: item && item.logo ? item.logo : '',
-              itu: item && item.itu ? item.itu : '',
-              picode: item && item.picode ? item.picode : generateId(),
-              streamUrl: item && item.streamUrl ? item.streamUrl : '' // Added streamUrl
-            }));
-          }
-          listsObj = newLists;
-          // Dopo aver caricato le liste, assicurati che currentListName sia valido o imposta la prima lista
-          const listNames = Object.keys(listsObj);
-          if (listNames.length > 0 && !listsObj[currentListName]) {
-            currentListName = listNames[0];
-          } else if (listNames.length === 0) {
-            listsObj = { 'Default': [] };
-            currentListName = 'Default';
-          }
-          stations = listsObj[currentListName] || [];
-        } else {
-          throw new Error('Invalid format');
-        }
         loadMetadata = { origin: 'Local File', source: file.name, date: new Date(file.lastModified).toLocaleString() };
         await persistStations();
         renderButtons();
@@ -445,7 +448,8 @@
       const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
       const now = new Date();
       const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const filename = `FavStations (${dateStr}).json`;
+      const timePart = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
+      const filename = `FavStations (${datePart} ${timePart}).json`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = filename;
@@ -1344,7 +1348,6 @@
     metaInfo.id = 'favstations-meta-info';
     metaInfo.style.cssText = 'font-size: 12px; color: #555; background: #f5f5f5; padding: 8px 10px; border-radius: 6px; margin-bottom: 10px; border: 1px solid #ddd; line-height: 1.4;';
     const updateMetadataDisplay = () => {
-      if (!isAdmin) return;
       metaInfo.innerHTML = `
         <div style="display:grid; grid-template-columns: 80px 1fr; gap: 4px;">
           <b>Origin:</b> <span>${loadMetadata.origin}</span>
@@ -1352,10 +1355,8 @@
         </div>
       `;
     };
-    if (isAdmin) {
-      updateMetadataDisplay();
-      box.appendChild(metaInfo);
-    }
+    updateMetadataDisplay();
+    box.appendChild(metaInfo);
 
     // Action buttons for Quick Management
     const actionsBar = document.createElement('div');
@@ -1404,6 +1405,104 @@
             updateMetadataDisplay();
             renderButtons();
             updateListSelect();
+          }
+        },
+        {
+          label: 'Load from Pastebin',
+          tooltip: 'Import stations from a Pastebin link or ID.',
+          action: async () => {
+            const input = prompt('Enter Pastebin ID or URL (e.g. XYZ or https://pastebin.com/raw/XYZ):');
+            if (!input) return;
+            let id = input.trim();
+            if (id.includes('pastebin.com/')) {
+              id = id.split('/').filter(p => p).pop();
+            }
+            const url = `https://pastebin.com/raw/${id}`;
+            const oldUrl = config.remoteStationsUrl;
+            config.remoteStationsUrl = url;
+            const ok = await importFromRemote(false);
+            if (!ok) config.remoteStationsUrl = oldUrl;
+          }
+        },
+        {
+          label: 'Load from Pastebin Folder',
+          tooltip: 'Browse and load a JSON file from your configured Pastebin folder.',
+          action: async () => {
+            let url = config.pastebinFolderUrl;
+            if (!url) {
+              url = prompt('Enter Pastebin Folder/Collection URL:', 'https://pastebin.com/u/cmario/1/zMXpkpRm');
+              if (!url) return;
+              config.pastebinFolderUrl = url.trim();
+              await persistConfig();
+              if (isAdmin) await persistConfigToServer();
+            }
+
+            showToast('Fetching folder content...');
+            try {
+              const res = await fetch('/plugins/FavStations/fetch-pastebin-folder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url })
+              });
+              const data = await res.json();
+              if (data && data.ok && data.files && data.files.length > 0) {
+                const fileItems = data.files.map(f => ({
+                  label: f.title,
+                  tooltip: `ID: ${f.id}`,
+                  action: async () => {
+                    const rawUrl = `https://pastebin.com/raw/${f.id}`;
+                    const oldUrl = config.remoteStationsUrl;
+                    config.remoteStationsUrl = rawUrl;
+                    const ok = await importFromRemote(true);
+                    if (ok) {
+                      loadMetadata.origin = 'Pastebin Folder';
+                      loadMetadata.source = `${f.title} (ID: ${f.id})`;
+                    }
+                    if (!ok) config.remoteStationsUrl = oldUrl;
+                    renderListManager();
+                    updateMetadataDisplay();
+                  }
+                }));
+                
+                fileItems.push({
+                  label: '--- Change Folder URL ---',
+                  action: async () => {
+                    config.pastebinFolderUrl = '';
+                    await persistConfig();
+                  }
+                });
+
+                const rect = loadMenuBtn.getBoundingClientRect();
+                showStationContextMenu(rect.left, rect.bottom + 5, { items: fileItems });
+              } else {
+                alert('No pastes found or folder inaccessible.');
+              }
+            } catch (e) { alert('Error fetching folder: ' + e.message); }
+          }
+        },
+        {
+          label: 'Load from Server Folder',
+          tooltip: 'Admin: Choose and load a JSON file directly from the server\'s FavStations directory.',
+          action: async () => {
+            try {
+              const res = await fetch('/plugins/FavStations/list-backups');
+              const rdata = await res.json();
+              if (!rdata.ok || !rdata.files || rdata.files.length === 0) {
+                return alert('No additional JSON files found in the server directory.');
+              }
+              const choice = prompt(`Available files in FavStations dir:\n\n${rdata.files.join('\n')}\n\nEnter the filename to load:`);
+              if (!choice) return;
+              const loadRes = await fetch(`/plugins/FavStations/load-backup?filename=${encodeURIComponent(choice)}`);
+              const loadData = await loadRes.json();
+              if (loadData.ok) {
+                processImportedData(loadData.data);
+                loadMetadata = { origin: 'Server Folder', source: choice, date: loadData.mtime || new Date().toLocaleString() };
+                await persistStations(); renderButtons(); updateListSelect(); renderListManager(); updateMetadataDisplay();
+                showToast(`Loaded ${choice}`);
+              } else {
+                alert('Load failed: ' + loadData.error);
+              }
+            } catch (e) { alert('Error: ' + e.message); }
           }
         },
         {
@@ -1532,7 +1631,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   data: JSON.stringify(dataToExport, null, 2),
-                  name: `FavStations Export (${new Date().toLocaleDateString()})`
+                  name: `FavStations Export (${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')} ${String(new Date().getHours()).padStart(2, '0')}-${String(new Date().getMinutes()).padStart(2, '0')})`
                 })
               });
               const result = await response.json();
@@ -2991,7 +3090,12 @@
     let currentStartupMode = baseConfig.startupMode || 'server';
     let remoteInput;
     let modeSelect;
+    let pastebinInput;
+    let pUserKeyInput;
+    let pFolderInput;
+
     if (isAdmin) {
+
       const startupModeGroup = document.createElement('fieldset');
       startupModeGroup.style.border = '1px solid #ccc';
       startupModeGroup.style.borderRadius = '4px';
@@ -3005,6 +3109,7 @@
       const modes = [
         { id: 'server', label: 'Server (Local JSON)' },
         { id: 'remote', label: 'Remote (URL/GitHub)' },
+        { id: 'pastebin_folder', label: 'Pastebin Folder (Latest)' },
         { id: 'empty', label: 'Empty list' }
       ];
 
@@ -3012,6 +3117,22 @@
       remoteContainer.style.display = (currentStartupMode === 'remote' ? 'block' : 'none');
       remoteContainer.style.marginTop = '4px';
       remoteContainer.style.paddingLeft = '24px';
+
+      const pFolderContainer = document.createElement('div');
+      pFolderContainer.style.display = (currentStartupMode === 'pastebin_folder' ? 'block' : 'none');
+      pFolderContainer.style.marginTop = '4px';
+      pFolderContainer.style.paddingLeft = '24px';
+
+      const pFolderLabel = document.createElement('div');
+      pFolderLabel.textContent = 'Pastebin Folder/Collection URL:';
+      pFolderLabel.style.cssText = 'font-size: 12px; margin-bottom: 4px; color: #555;';
+      pFolderContainer.appendChild(pFolderLabel);
+
+      pFolderInput = document.createElement('input'); // This is the input for the startup mode
+      pFolderInput.type = 'text';
+      pFolderInput.value = baseConfig.pastebinFolderUrl || '';
+      pFolderInput.style.cssText = 'width: 100%; padding: 6px; box-sizing: border-box;';
+      pFolderContainer.appendChild(pFolderInput);
 
       const remoteLabel = document.createElement('div');
       remoteLabel.textContent = 'Remote Stations JSON URL:';
@@ -3045,12 +3166,14 @@
         rb.onchange = () => {
           currentStartupMode = m.id;
           remoteContainer.style.display = (currentStartupMode === 'remote' ? 'block' : 'none');
+          pFolderContainer.style.display = (currentStartupMode === 'pastebin_folder' ? 'block' : 'none');
         };
         label.appendChild(rb);
         label.appendChild(document.createTextNode(m.label));
         startupModeGroup.appendChild(label);
+        if (m.id === 'remote') startupModeGroup.appendChild(remoteContainer);
+        if (m.id === 'pastebin_folder') startupModeGroup.appendChild(pFolderContainer);
       });
-      startupModeGroup.appendChild(remoteContainer);
       form.appendChild(startupModeGroup);
 
       // --- Show Stations Mode Selector ---
@@ -3078,7 +3201,7 @@
         // Add listener to radios to toggle the mode label
         form.querySelectorAll('input[name="fs-global-startup-mode"]').forEach(radio => {
           const oldHandler = radio.onchange;
-          radio.onchange = () => {
+          radio.onchange = () => { // NOSONAR
             oldHandler();
             modeLabel.style.display = (currentStartupMode === 'empty' ? 'none' : 'flex');
           };
@@ -3109,13 +3232,26 @@
       pastebinLabel.style.display = 'flex';
       pastebinLabel.style.flexDirection = 'column';
       pastebinLabel.style.gap = '4px';
-      const pastebinInput = document.createElement('input');
+      pastebinInput = document.createElement('input');
       pastebinInput.type = 'password'; // Hidden input for security
       pastebinInput.value = baseConfig.pastebinDevKey || '';
       pastebinInput.placeholder = 'Your Pastebin API Key';
       pastebinInput.style.padding = '6px';
       pastebinLabel.appendChild(pastebinInput);
       form.appendChild(pastebinLabel);
+    }
+
+    if (isAdmin) {
+      const pUserKeyLabel = document.createElement('label');
+      pUserKeyLabel.textContent = 'Pastebin User Key (for folders):';
+      pUserKeyLabel.style.display = 'flex'; pUserKeyLabel.style.flexDirection = 'column'; pUserKeyLabel.style.gap = '4px';
+      pUserKeyInput = document.createElement('input');
+      pUserKeyInput.type = 'password';
+      pUserKeyInput.value = baseConfig.pastebinUserKey || '';
+      pUserKeyInput.placeholder = 'Your Pastebin User Key';
+      pUserKeyInput.style.padding = '6px';
+      pUserKeyLabel.appendChild(pUserKeyInput);
+      form.appendChild(pUserKeyLabel);
     }
 
     // --- Temp Slot Count ---
@@ -3256,6 +3392,8 @@
           }
 
           config.remoteStationsUrl = url;
+        } else if (currentStartupMode === 'pastebin_folder' && pFolderInput) {
+          config.pastebinFolderUrl = pFolderInput.value.trim();
         } else if (currentStartupMode !== 'remote') {
           // If not remote, ensure remoteStationsUrl is cleared or set to default
           config.remoteStationsUrl = defaultRemoteStationsUrl;
@@ -3263,6 +3401,8 @@
         if (showLogosCheckbox) config.showLogos = showLogosCheckbox.checked;
         const pastebinInput = form.querySelector('input[placeholder="Your Pastebin API Key"]');
         if (pastebinInput) config.pastebinDevKey = pastebinInput.value.trim();
+        const pUserKeyInput = form.querySelector('input[placeholder="Your Pastebin User Key"]');
+        if (pUserKeyInput) config.pastebinUserKey = pUserKeyInput.value.trim();
       }
 
       if (isGlobal && isAdmin && modeSelect) config.showStationsMode = modeSelect.value;
