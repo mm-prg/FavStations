@@ -7,7 +7,7 @@
 "use strict";
 
 (() => {
-  const pluginVersion = '0.1.6';
+  const pluginVersion = '0.1.7';
   const pluginId = 'favstations-plugin';
 
   // Custom styled tooltip to match fmdxwebserver UI style (like top plugin buttons)
@@ -166,10 +166,22 @@
   }
 
   // Helper to open the stream in a small popup with a title
-  const playStream = (st) => {
+  const playStream = async (st) => {
     if (!st) return;
     const title = st.name || st.freq || 'Station';
     let url = st.streamUrl;
+    let needsResolution = false;
+
+    if (url) {
+      if (url.includes('radio.garden/listen/')) {
+        const rgMatch = url.match(/radio\.garden\/listen\/[^\/]+\/([a-zA-Z0-9_-]+)/);
+        if (rgMatch) {
+          url = `https://radio.garden/api/ara/content/listen/${rgMatch[1]}/channel.mp3`;
+        }
+      } else if (url.includes('onlineradiobox.com/') && !url.match(/\.(mp3|aac|m3u8|pls|m3u|ogg)$/i)) {
+        needsResolution = true;
+      }
+    }
 
     if (!url) {
       const q = (st.name || st.freq || '').trim();
@@ -197,33 +209,62 @@
           </head>
           <body>
             <div class="header"><h2>${title}</h2></div>
-            ${st.streamUrl ? `
-              <div class="player-container">
-                <audio id="player" controls autoplay>
-                  <source src="${url}">
-                  Your browser does not support the audio element.
-                </audio>
-                <div id="status">Connecting...</div>
-                <div class="url-display">${url}</div>
-              </div>
-              <script>
-                const a = document.getElementById('player');
-                const s = document.getElementById('status');
-                a.onplaying = () => s.textContent = 'Playing';
-                a.onwaiting = () => s.textContent = 'Buffering...';
-                a.onerror = () => s.textContent = 'Error: Unable to load stream';
-                // Trigger play immediately using the gesture from the parent window
-                a.play().catch(() => { s.textContent = 'Click Play to start'; });
-              </script>
-            ` : `
-              <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
-                <iframe src="${url}" allow="autoplay" style="flex: 1; border: none;"></iframe>
-                <div class="url-display" style="padding: 4px 10px; background: #1a1a1a; margin: 0; width: 100%; box-sizing: border-box; border-top: 1px solid #333; max-width: 100%;">${url}</div>
-              </div>
-            `}
+            <div class="player-container" id="player-wrapper">
+               <div id="status">${needsResolution ? 'Resolving stream...' : 'Connecting...'}</div>
+            </div>
           </body>
         </html>
       `);
+
+      const setupPlayer = (resolvedUrl) => {
+        if (!win || win.closed) return;
+        const wrapper = win.document.getElementById('player-wrapper');
+        if (!wrapper) return;
+
+        if (st.streamUrl || resolvedUrl !== url) { // Play direct stream
+          wrapper.innerHTML = `
+            <audio id="player" controls autoplay name="media">
+              <source src="${resolvedUrl}">
+              Your browser does not support the audio element.
+            </audio>
+            <div id="status">Connecting...</div>
+            <div class="url-display">${resolvedUrl}</div>
+          `;
+          const a = win.document.getElementById('player');
+          const s = win.document.getElementById('status');
+          a.onplaying = () => s.textContent = 'Playing';
+          a.onwaiting = () => s.textContent = 'Buffering...';
+          a.onerror = () => s.textContent = 'Error: Unable to load stream';
+          a.play().catch(() => { s.textContent = 'Click Play to start'; });
+        } else {
+          // iframe fallback for fmstream
+          wrapper.outerHTML = `
+              <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; width: 100%;">
+                <iframe src="${resolvedUrl}" allow="autoplay" style="flex: 1; border: none;"></iframe>
+                <div class="url-display" style="padding: 4px 10px; background: #1a1a1a; margin: 0; width: 100%; box-sizing: border-box; border-top: 1px solid #333; max-width: 100%;">${resolvedUrl}</div>
+              </div>
+          `;
+        }
+      };
+
+      if (needsResolution) {
+        try {
+          const res = await fetch(`https://cors-proxy.de:13128/${url}`);
+          if (res.ok) {
+            const html = await res.text();
+            const streamMatch = html.match(/stream="([^"]+)"/);
+            if (streamMatch && streamMatch[1]) {
+              url = streamMatch[1];
+            } else {
+              console.warn("FavStations: Could not find stream in OnlineRadioBox page");
+            }
+          }
+        } catch (e) {
+          console.error("FavStations: Failed to resolve OnlineRadioBox stream", e);
+        }
+      }
+
+      setupPlayer(url);
       win.document.close();
       showToast(st.streamUrl ? `Playing stream for ${title}` : `Searching stream for ${title}`);
     }
@@ -510,29 +551,82 @@
       }
       const rect = settingsBtn.getBoundingClientRect();
       let items = [
-        { label: 'Manage Lists', tooltip: 'Add, rename, delete, or reorder your station collections. Also handles Import/Export.', action: openManager },
+        {
+          label: 'Manage Lists',
+          tooltip: 'Add, rename, delete, or reorder your station collections. Also handles Import/Export.',
+          action: openManager
+        },
         {
           label: 'Edit Settings',
           tooltip: isAdmin ? 'Global Admin Settings: Define startup behavior and layout for all users.' : 'Personal Settings: Customize button dimensions and local preferences.',
           action: () => openSettingsEditor(true)
-        },
-        {
-          label: config.showLogos ? 'Hide Logos' : 'Show Logos',
-          tooltip: 'Toggle the display of station logos on the buttons (browser-only setting).',
-          action: async () => {
-            config.showLogos = !config.showLogos;
-            await persistConfig();
-            renderButtons();
-            renderTempSlots();
-            showToast(`Logos ${config.showLogos ? 'enabled' : 'disabled'}`);
-          }
-        },
-        {
-          label: '?',
-          tooltip: 'Open the project documentation and support page on GitHub.',
-          action: () => window.open('https://github.com/mm-prg/FavStations', '_blank')
         }
       ];
+
+      if (isAdmin) {
+        if (config.startupMode === 'server' || !config.startupMode) {
+          items.push({
+            label: 'Save to Server',
+            tooltip: 'Admin: Permanently save these lists as the global default on the server.',
+            action: async () => {
+              await persistStations();
+              const dataToSave = { data: listsObj, metadata: loadMetadata };
+              const ok = await saveServer(dataToSave);
+              if (ok) {
+                showToast('Successfully saved to server');
+                await fetchList();
+              } else {
+                showToast('Failed to save to server');
+              }
+            }
+          });
+        } else if (config.startupMode === 'pastebin_folder') {
+          items.push({
+            label: 'Save to Pastebin',
+            tooltip: 'Admin: Export current lists to Pastebin. Prompts for API Key if missing.',
+            action: async () => {
+              if (!config.pastebinDevKey) {
+                const key = prompt('Pastebin API Dev Key is missing. Please enter your Pastebin API Dev Key.\n\nYou can find it here after login: https://pastebin.com/doc_api');
+                if (!key) return;
+                config.pastebinDevKey = key.trim();
+                const saved = await persistConfigToServer();
+                if (!saved) return;
+              }
+
+              const dataToExport = {
+                data: (listsObj && Object.keys(listsObj).length) ? listsObj : { [currentListName]: (stations || []) },
+                metadata: loadMetadata
+              };
+              showToast('Creating Paste...');
+              try {
+                const response = await fetch('/plugins/FavStations/export-pastebin', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    data: JSON.stringify(dataToExport, null, 2),
+                    name: `FavStations Export (${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')} ${String(new Date().getHours()).padStart(2, '0')}-${String(new Date().getMinutes()).padStart(2, '0')})`
+                  })
+                });
+                const result = await response.json();
+                if (result.ok) {
+                  window.open(result.url, '_blank');
+                  showToast('Paste created! URL opened in new tab.');
+                } else {
+                  alert('Pastebin error: ' + result.error);
+                }
+              } catch (err) {
+                alert('Failed to connect to server for Pastebin export.');
+              }
+            }
+          });
+        }
+      }
+
+      items.push({
+        label: '?',
+        tooltip: 'Open the project documentation and support page on GitHub.',
+        action: () => window.open('https://github.com/mm-prg/FavStations', '_blank')
+      });
 
       showStationContextMenu(rect.left, rect.bottom + 5, {
         items: items
@@ -568,6 +662,26 @@
       const span = document.getElementById('favstations-list-name'); if (span) span.textContent = currentListName;
     };
     controlsRow.appendChild(listSelect);
+
+    const toggleLogosBtn = document.createElement('button');
+    const iconShow = `<svg viewBox="0 0 24 24" width="1em" height="1em" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`;
+    const iconHide = `<svg viewBox="0 0 24 24" width="1em" height="1em" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline><line x1="2" y1="2" x2="22" y2="22" stroke="#ff4444" stroke-width="3"></line></svg>`;
+    toggleLogosBtn.innerHTML = config.showLogos ? iconShow : iconHide;
+    toggleLogosBtn.style.cssText = `width:${dims.control.w}px; height:${dims.control.h}px; padding:0; background:${config.showLogos ? '#1f3a1f' : '#111'}; border:1px solid ${config.showLogos ? '#4caf50' : '#333'}; border-radius:4px; color:#fff; font-size:${dims.font * 1.2}px; display:inline-flex; align-items:center; justify-content:center; margin-left:4px; cursor:pointer; box-sizing:border-box;`;
+    toggleLogosBtn.onclick = async () => {
+      config.showLogos = !config.showLogos;
+      await persistConfig();
+      renderButtons();
+      renderTempSlots();
+      toggleLogosBtn.innerHTML = config.showLogos ? iconShow : iconHide;
+      toggleLogosBtn.style.background = config.showLogos ? '#1f3a1f' : '#111';
+      toggleLogosBtn.style.borderColor = config.showLogos ? '#4caf50' : '#333';
+      showToast(`Logos ${config.showLogos ? 'enabled' : 'disabled'}`);
+    };
+    toggleLogosBtn.addEventListener('mouseenter', () => showTip(toggleLogosBtn, config.showLogos ? 'Hide Logos\nHide station logos on buttons.' : 'Show Logos\nShow station logos on buttons.'));
+    toggleLogosBtn.addEventListener('mouseleave', hideTip);
+    toggleLogosBtn.addEventListener('mousedown', hideTip);
+    controlsRow.appendChild(toggleLogosBtn);
 
     const clearTempBtn = document.createElement('button');
     clearTempBtn.textContent = '❌'; // Red cross icon
@@ -1463,7 +1577,7 @@
                     updateMetadataDisplay();
                   }
                 }));
-                
+
                 fileItems.push({
                   label: '--- Change Folder URL ---',
                   action: async () => {
@@ -1608,6 +1722,24 @@
       ];
 
       if (isAdmin) {
+
+        items.push({
+          label: 'Save to Server',
+          tooltip: 'Admin: Permanently save these lists as the global default on the server.',
+          action: async () => {
+            await persistStations();
+            const dataToSave = { data: listsObj, metadata: loadMetadata };
+            const ok = await saveServer(dataToSave);
+            if (ok) {
+              showToast('Successfully saved to server');
+              await fetchList();
+              updateMetadataDisplay();
+            } else {
+              showToast('Failed to save to server');
+            }
+          }
+        });
+
         items.push({
           label: 'Save to Pastebin',
           tooltip: 'Admin: Export current lists to Pastebin. Prompts for API Key if missing.',
@@ -1647,22 +1779,8 @@
           }
         });
 
-        items.push({
-          label: 'Save to Server',
-          tooltip: 'Admin: Permanently save these lists as the global default on the server.',
-          action: async () => {
-            await persistStations();
-            const dataToSave = { data: listsObj, metadata: loadMetadata };
-            const ok = await saveServer(dataToSave);
-            if (ok) {
-              showToast('Successfully saved to server');
-              await fetchList();
-              updateMetadataDisplay();
-            } else {
-              showToast('Failed to save to server');
-            }
-          }
-        });
+
+
       }
       showStationContextMenu(rect.left, rect.bottom + 5, { items });
     };
@@ -2004,6 +2122,44 @@
     streamUrlInput.value = s.streamUrl || '';
     streamUrlInput.style.flex = '1';
     streamUrlInput.placeholder = 'https://... (e.g., MP3 stream)';
+
+    streamUrlInput.onblur = async () => {
+      let url = streamUrlInput.value.trim();
+      if (!url) return;
+      if (url.includes('radio.garden/listen/')) {
+        const rgMatch = url.match(/radio\.garden\/listen\/[^\/]+\/([a-zA-Z0-9_-]+)/);
+        if (rgMatch) {
+          streamUrlInput.value = `https://radio.garden/api/ara/content/listen/${rgMatch[1]}/channel.mp3`;
+          showToast('Radio Garden stream resolved');
+        }
+      } else if (url.includes('onlineradiobox.com/') && !url.match(/\.(mp3|aac|m3u8|pls|m3u|ogg)$/i)) {
+        const prevPlaceholder = streamUrlInput.placeholder;
+        const prevValue = streamUrlInput.value;
+        streamUrlInput.value = '';
+        streamUrlInput.placeholder = 'Resolving stream...';
+        try {
+          const res = await fetch(`https://cors-proxy.de:13128/${url}`);
+          if (res.ok) {
+            const html = await res.text();
+            const streamMatch = html.match(/stream="([^"]+)"/);
+            if (streamMatch && streamMatch[1]) {
+              streamUrlInput.value = streamMatch[1];
+              showToast('OnlineRadioBox stream resolved');
+            } else {
+              streamUrlInput.value = prevValue;
+              showToast('Could not extract stream URL');
+            }
+          } else {
+            streamUrlInput.value = prevValue;
+          }
+        } catch (e) {
+          console.error(e);
+          streamUrlInput.value = prevValue;
+        }
+        streamUrlInput.placeholder = prevPlaceholder;
+      }
+    };
+
     streamUrlContainer.appendChild(streamUrlInput);
 
     const streamSearchBtn = document.createElement('button');
@@ -2029,9 +2185,9 @@
     function getQueryVariations(q) {
       const variations = [];
       let cleaned = q.replace(/^[_*\s]+|[_*\s]+$/g, '')
-                     .replace(/_/g, ' ')
-                     .replace(/\s+/g, ' ')
-                     .trim();
+        .replace(/_/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
       if (cleaned) {
         variations.push(cleaned);
       }
@@ -2203,7 +2359,7 @@
 
       // Get position first to ensure the menu is placed correctly before the panel expands
       const rect = streamSearchBtn.getBoundingClientRect();
-      
+
       showStationContextMenu(rect.left, rect.bottom + 5, {
         items: [
           {

@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * FavStations Plugin for FM-DX Webserver (v0.1.6)
+ * FavStations Plugin for FM-DX Webserver (v0.1.7)
  * ************************************************
  */
 
@@ -275,7 +275,7 @@ endpointsRouter.post('/plugins/FavStations/export-pastebin', express.json(), (re
       api_paste_name: name || 'FavStations Export',
       api_paste_format: 'json',
       api_paste_private: '0', // 0 = public
-      api_paste_expire_date: '1M' // Expire in 1 month
+      api_paste_expire_date: 'N' // Never expire
     };
 
     // User key is required to add pastes to a folder
